@@ -3,6 +3,8 @@ import Home from "@/components/home";
 import WidgetBuilder from "@/components/dashboard/WidgetBuilder";
 import AIProviderSetup from "@/components/dashboard/AIProviderSetup";
 import AnalyticsDashboard from "@/components/dashboard/AnalyticsDashboard";
+import DashboardPage from "@/components/dashboard/DashboardPage";
+import AdminPanelWrapper from "@/components/dashboard/AdminPanelWrapper";
 
 const routes: RouteObject[] = [
   {
@@ -10,18 +12,29 @@ const routes: RouteObject[] = [
     element: <Home />,
   },
   {
+    path: "/dashboard",
+    element: <AdminPanelWrapper title="Dashboard"><DashboardPage /></AdminPanelWrapper>,
+  },
+  {
     path: "/widget-builder",
-    element: <WidgetBuilder />,
+    element: <AdminPanelWrapper title="Widget Builder"><WidgetBuilder /></AdminPanelWrapper>,
   },
   {
     path: "/ai-providers",
-    element: <AIProviderSetup />,
+    element: <AdminPanelWrapper title="AI Provider Setup"><AIProviderSetup /></AdminPanelWrapper>,
   },
   {
     path: "/analytics",
-    element: <AnalyticsDashboard />,
+    element: <AdminPanelWrapper title="Analytics Dashboard"><AnalyticsDashboard /></AdminPanelWrapper>,
   },
-  // Add more routes as needed
+  {
+    path: "/users",
+    element: <AdminPanelWrapper title="User Management"><div className="p-6">User Management Content</div></AdminPanelWrapper>,
+  },
+  {
+    path: "/settings",
+    element: <AdminPanelWrapper title="Settings"><div className="p-6">Settings Content</div></AdminPanelWrapper>,
+  },
 ];
 
 export default routes;

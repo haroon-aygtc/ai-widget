@@ -42,7 +42,7 @@ interface AIProviderConfig {
 }
 
 const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
-  onSave = () => {},
+  onSave = () => { },
 }) => {
   const [activeProvider, setActiveProvider] = useState<string>("openai");
   const [apiKey, setApiKey] = useState<string>("");
@@ -173,7 +173,7 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="basic" className="w-full">
-              <TabsList className="grid grid-cols-2 w-[400px]">
+              <TabsList className="grid grid-cols-2 w-full max-w-[400px]">
                 <TabsTrigger value="basic">Basic Settings</TabsTrigger>
                 <TabsTrigger value="advanced">Advanced Settings</TabsTrigger>
               </TabsList>

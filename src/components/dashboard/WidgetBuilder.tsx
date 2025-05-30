@@ -638,7 +638,7 @@ const WidgetBuilder = () => {
           </div>
         </div>
 
-        <div className="w-1/3 border-l p-6 bg-muted/20">
+        <div className="w-full md:w-1/3 border-t md:border-t-0 md:border-l p-4 sm:p-6 bg-muted/20">
           <div className="sticky top-6">
             <h3 className="text-lg font-medium mb-4">Live Preview</h3>
             <div className="bg-background rounded-lg border shadow-sm p-4 h-[600px] overflow-hidden">

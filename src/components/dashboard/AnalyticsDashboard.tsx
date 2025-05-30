@@ -79,7 +79,7 @@ const AnalyticsDashboard = ({
   };
 
   return (
-    <div className="bg-background p-6 space-y-6 w-full">
+    <div className="space-y-6 w-full">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
@@ -129,7 +129,7 @@ const AnalyticsDashboard = ({
                 mode="range"
                 defaultMonth={date.from}
                 selected={date}
-                onSelect={(newDate) => newDate && setDate(newDate)}
+                onSelect={(newDate) => newDate && setDate(newDate as { from: Date; to: Date })}
                 numberOfMonths={2}
               />
             </PopoverContent>
@@ -146,7 +146,7 @@ const AnalyticsDashboard = ({
         onValueChange={setSelectedTab}
         className="w-full"
       >
-        <TabsList className="grid grid-cols-3 w-full max-w-md mx-auto">
+        <TabsList className="grid grid-cols-1 sm:grid-cols-3 w-full max-w-md mx-auto gap-2 sm:gap-0">
           <TabsTrigger value="usage">
             <BarChart3 className="h-4 w-4 mr-2" />
             Usage Metrics
