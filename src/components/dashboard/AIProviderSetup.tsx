@@ -42,7 +42,7 @@ interface AIProviderConfig {
 }
 
 const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
-  onSave = () => { },
+  onSave = () => {},
 }) => {
   const [activeProvider, setActiveProvider] = useState<string>("openai");
   const [apiKey, setApiKey] = useState<string>("");
@@ -87,7 +87,7 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     setModel(modelsByProvider[provider][0]);
   };
 
-  const handleTestConnection = () => {
+  const handleTestConnection = async () => {
     if (!apiKey) {
       setTestStatus("error");
       setTestMessage("API key is required");
@@ -97,19 +97,33 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     setTestStatus("loading");
     setTestMessage("Testing connection...");
 
-    // Simulate API test
-    setTimeout(() => {
-      if (apiKey.length > 10) {
+    try {
+      // Import the API service
+      const { aiProviderApi } = await import("@/lib/api");
+
+      // Call the test connection endpoint
+      const response = await aiProviderApi.testConnection({
+        provider: activeProvider,
+        apiKey: apiKey,
+      });
+
+      if (response.data.success) {
         setTestStatus("success");
-        setTestMessage("Connection successful!");
+        setTestMessage(response.data.message || "Connection successful!");
       } else {
         setTestStatus("error");
-        setTestMessage("Invalid API key or connection failed");
+        setTestMessage(
+          response.data.message || "Invalid API key or connection failed",
+        );
       }
-    }, 1500);
+    } catch (error) {
+      setTestStatus("error");
+      setTestMessage("Connection failed. Please try again.");
+      console.error("Test connection error:", error);
+    }
   };
 
-  const handleSaveConfiguration = () => {
+  const handleSaveConfiguration = async () => {
     const config: AIProviderConfig = {
       provider: activeProvider,
       apiKey,
@@ -124,7 +138,22 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
       },
     };
 
-    onSave(config);
+    try {
+      // Import the API service
+      const { aiProviderApi } = await import("@/lib/api");
+
+      // Call the create endpoint
+      await aiProviderApi.create(config);
+
+      // Call the onSave callback
+      onSave(config);
+
+      // Show success message
+      alert("AI Provider configuration saved successfully!");
+    } catch (error) {
+      console.error("Save configuration error:", error);
+      alert("Failed to save configuration. Please try again.");
+    }
   };
 
   return (

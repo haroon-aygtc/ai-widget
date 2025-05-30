@@ -95,20 +95,53 @@ const WidgetBuilder = () => {
     });
   };
 
-  const saveWidget = () => {
-    // Save widget configuration logic would go here
-    console.log("Saving widget configuration:", widgetConfig);
+  const saveWidget = async () => {
+    try {
+      // Import the API service
+      const { widgetApi } = await import("@/lib/api");
+
+      // Call the create endpoint
+      const response = await widgetApi.create({
+        name: "New Widget", // TODO: Add name input field
+        design: widgetConfig.design,
+        behavior: widgetConfig.behavior,
+        placement: widgetConfig.placement,
+        status: "active",
+      });
+
+      console.log("Widget saved successfully:", response.data);
+      alert("Widget saved successfully!");
+    } catch (error) {
+      console.error("Save widget error:", error);
+      alert("Failed to save widget. Please try again.");
+    }
   };
 
-  const generateEmbedCode = () => {
-    // Generate embed code logic would go here
-    return `<script src="https://widget.example.com/embed.js" data-widget-id="widget-123"></script>`;
+  const generateEmbedCode = async (widgetId: string) => {
+    try {
+      // Import the API service
+      const { widgetApi } = await import("@/lib/api");
+
+      // Call the generate embed code endpoint
+      const response = await widgetApi.generateEmbedCode(widgetId);
+
+      return `<script src="${window.location.origin}/widget.js" data-widget-id="${response.data.embed_code}"></script>`;
+    } catch (error) {
+      console.error("Generate embed code error:", error);
+      return `<script src="${window.location.origin}/widget.js" data-widget-id="widget-demo"></script>`;
+    }
   };
 
-  const copyEmbedCode = () => {
-    const code = generateEmbedCode();
+  const copyEmbedCode = async () => {
+    // For demo purposes, we'll use a hardcoded widget ID
+    // In a real implementation, this would be the ID of the saved widget
+    const widgetId = "demo-widget-123";
+
+    const code = await generateEmbedCode(widgetId);
     navigator.clipboard.writeText(code);
+
     // Show toast notification
+    alert("Embed code copied to clipboard!");
   };
 
   return (
