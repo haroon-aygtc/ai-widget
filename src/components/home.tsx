@@ -32,51 +32,19 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
+import AuthHeader from "./auth/AuthHeader";
+import { useAuth } from "@/lib/auth";
 
 const Home = () => {
   const [showDashboard, setShowDashboard] = React.useState(false);
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   if (!showDashboard) {
     return (
       <div className="min-h-screen bg-background">
         {/* Hero Section */}
-        <header className="bg-card border-b">
-          <div className="container mx-auto px-4 py-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-6 w-6 text-primary" />
-                <h1 className="text-xl font-bold">Al Yalayis Business Hub</h1>
-              </div>
-              <div className="flex items-center gap-4">
-                <nav className="hidden md:flex items-center gap-6">
-                  <a
-                    href="#services"
-                    className="text-sm font-medium hover:text-primary transition-colors"
-                  >
-                    Services
-                  </a>
-                  <a
-                    href="#divisions"
-                    className="text-sm font-medium hover:text-primary transition-colors"
-                  >
-                    Business Divisions
-                  </a>
-                  <a
-                    href="#contact"
-                    className="text-sm font-medium hover:text-primary transition-colors"
-                  >
-                    Contact
-                  </a>
-                </nav>
-                <ThemeToggle />
-                <Button onClick={() => setShowDashboard(true)}>
-                  Dashboard
-                </Button>
-              </div>
-            </div>
-          </div>
-        </header>
+        <AuthHeader showDashboardButton={false} />
 
         <main>
           {/* Hero Banner */}
@@ -306,14 +274,14 @@ const Home = () => {
                 engage with your customers
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button
-                  size="lg"
-                  variant="secondary"
-                  className="gap-2"
-                  onClick={() => setShowDashboard(true)}
-                >
-                  Go to Dashboard <ArrowRight className="h-4 w-4" />
-                </Button>
+                {isAuthenticated && (
+                  <Button
+                    onClick={() => navigate("/dashboard")}
+                    className="gap-2"
+                  >
+                    Dashboard <ArrowRight className="h-4 w-4" />
+                  </Button>
+                )}
                 <Button
                   size="lg"
                   variant="outline"

@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
+import { useAuth } from "@/lib/auth";
 import {
   LayoutDashboard,
   Settings,
@@ -15,6 +16,7 @@ import {
   Bell,
   Search,
   LogOut,
+  User,
 } from "lucide-react";
 
 interface AdminPanelWrapperProps {
@@ -29,8 +31,10 @@ const AdminPanelWrapper: React.FC<AdminPanelWrapperProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
 
+  const { user, logout } = useAuth();
+
   const handleLogout = () => {
-    // In a real app, this would handle logout logic
+    logout();
     navigate("/");
   };
 
@@ -59,6 +63,12 @@ const AdminPanelWrapper: React.FC<AdminPanelWrapperProps> = ({
       path: "/users",
       label: "User Management",
       icon: <Users className="h-5 w-5" />,
+      adminOnly: true,
+    },
+    {
+      path: "/profile",
+      label: "Profile",
+      icon: <User className="h-5 w-5" />,
     },
     {
       path: "/settings",
@@ -77,27 +87,34 @@ const AdminPanelWrapper: React.FC<AdminPanelWrapperProps> = ({
         </div>
 
         <nav className="space-y-1 flex-1">
-          {navItems.map((item) => (
-            <button
-              key={item.path}
-              onClick={() => navigate(item.path)}
-              className={`flex items-center gap-3 px-3 py-2 rounded-md w-full text-left transition-colors ${location.pathname === item.path ? "bg-accent text-accent-foreground" : "hover:bg-accent hover:text-accent-foreground"}`}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </button>
-          ))}
+          {navItems.map((item) => {
+            // Skip admin-only items for non-admin users
+            if (item.adminOnly && user?.role !== "admin") {
+              return null;
+            }
+
+            return (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md w-full text-left transition-colors ${location.pathname === item.path ? "bg-accent text-accent-foreground" : "hover:bg-accent hover:text-accent-foreground"}`}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </nav>
 
         <div className="mt-auto pt-4">
           <div className="flex items-center gap-3 px-3 py-2">
             <Avatar className="h-8 w-8">
-              <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=admin" />
-              <AvatarFallback>AD</AvatarFallback>
+              <AvatarImage src={user?.avatar} alt={user?.name} />
+              <AvatarFallback>{user?.name?.charAt(0) || "U"}</AvatarFallback>
             </Avatar>
             <div>
-              <p className="text-sm font-medium">Admin User</p>
-              <p className="text-xs text-muted-foreground">admin@example.com</p>
+              <p className="text-sm font-medium">{user?.name}</p>
+              <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
           </div>
         </div>
