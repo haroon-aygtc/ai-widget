@@ -42,7 +42,7 @@ interface AIProviderConfig {
 }
 
 const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
-  onSave = () => {},
+  onSave = () => { },
 }) => {
   const [activeProvider, setActiveProvider] = useState<string>("openai");
   const [apiKey, setApiKey] = useState<string>("");
@@ -139,11 +139,12 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     };
 
     try {
-      // Import the API service
-      const { aiProviderApi } = await import("@/lib/api");
+      // Import the store
+      const { useAIProviderStore } = await import("@/lib/store");
+      const createProvider = useAIProviderStore.getState().createProvider;
 
-      // Call the create endpoint
-      await aiProviderApi.create(config);
+      // Call the create function
+      await createProvider(config);
 
       // Call the onSave callback
       onSave(config);

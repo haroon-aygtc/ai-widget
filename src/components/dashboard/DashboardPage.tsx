@@ -22,6 +22,7 @@ import {
   PlusCircle,
   ChevronRight,
 } from "lucide-react";
+import WidgetList from "./WidgetList";
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();

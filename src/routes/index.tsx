@@ -9,6 +9,7 @@ import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
 import ProfilePage from "@/pages/ProfilePage";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import WidgetPage from "@/pages/WidgetPage";
 
 const routes: RouteObject[] = [
   {
@@ -98,6 +99,10 @@ const routes: RouteObject[] = [
         </AdminPanelWrapper>
       </ProtectedRoute>
     ),
+  },
+  {
+    path: "/widget/:widgetId",
+    element: <WidgetPage />,
   },
 ];
 

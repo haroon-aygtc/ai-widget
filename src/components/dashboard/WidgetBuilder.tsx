@@ -119,13 +119,14 @@ const WidgetBuilder = () => {
 
   const generateEmbedCode = async (widgetId: string) => {
     try {
-      // Import the API service
-      const { widgetApi } = await import("@/lib/api");
+      // Import the store
+      const { useWidgetStore } = await import("@/lib/store");
+      const generateCode = useWidgetStore.getState().generateEmbedCode;
 
-      // Call the generate embed code endpoint
-      const response = await widgetApi.generateEmbedCode(widgetId);
+      // Call the generate embed code function
+      const embedCode = await generateCode(widgetId);
 
-      return `<script src="${window.location.origin}/widget.js" data-widget-id="${response.data.embed_code}"></script>`;
+      return `<script src="${window.location.origin}/widget.js" data-widget-id="${embedCode || widgetId}"></script>`;
     } catch (error) {
       console.error("Generate embed code error:", error);
       return `<script src="${window.location.origin}/widget.js" data-widget-id="widget-demo"></script>`;
@@ -152,7 +153,7 @@ const WidgetBuilder = () => {
           <p className="text-muted-foreground">Customize your AI chat widget</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => {}}>
+          <Button variant="outline" onClick={() => { }}>
             <Eye className="mr-2 h-4 w-4" />
             Preview
           </Button>
@@ -655,7 +656,7 @@ const WidgetBuilder = () => {
           </Tabs>
 
           <div className="mt-6 flex justify-between">
-            <Button variant="outline" onClick={() => {}}>
+            <Button variant="outline" onClick={() => { }}>
               Reset to Default
             </Button>
             <div className="flex gap-2">
@@ -678,7 +679,7 @@ const WidgetBuilder = () => {
               <WidgetPreview config={widgetConfig} />
             </div>
             <div className="mt-4">
-              <Button variant="outline" className="w-full" onClick={() => {}}>
+              <Button variant="outline" className="w-full" onClick={() => { }}>
                 <Code className="mr-2 h-4 w-4" />
                 View Embed Code
               </Button>
