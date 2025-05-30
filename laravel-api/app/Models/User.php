@@ -66,6 +66,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the chat histories that belong to the user through widgets.
+     */
+    public function chatHistories()
+    {
+        return $this->hasManyThrough(ChatHistory::class, Widget::class);
+    }
+
+    /**
      * Check if the user is an admin.
      *
      * @return bool

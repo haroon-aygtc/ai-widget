@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import axios from "axios";
 
 export interface User {
   id: string;
@@ -16,59 +17,12 @@ interface AuthState {
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   clearError: () => void;
 }
 
-// Mock API calls - replace with actual API calls in production
-const mockLogin = async (email: string, password: string): Promise<User> => {
-  // Simulate API call delay
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-
-  // Mock validation
-  if (email === "admin@example.com" && password === "password") {
-    return {
-      id: "1",
-      name: "Admin User",
-      email: "admin@example.com",
-      role: "admin",
-      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=admin",
-    };
-  } else if (email === "user@example.com" && password === "password") {
-    return {
-      id: "2",
-      name: "Regular User",
-      email: "user@example.com",
-      role: "user",
-      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=user",
-    };
-  }
-
-  throw new Error("Invalid credentials");
-};
-
-const mockRegister = async (
-  name: string,
-  email: string,
-  password: string,
-): Promise<User> => {
-  // Simulate API call delay
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-
-  // Mock validation
-  if (email === "admin@example.com" || email === "user@example.com") {
-    throw new Error("Email already in use");
-  }
-
-  // Mock successful registration
-  return {
-    id: "3",
-    name,
-    email,
-    role: "user",
-    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name.toLowerCase().replace(/\s+/g, "")}`,
-  };
-};
+// API URL
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
 export const useAuth = create<AuthState>(
   persist(
@@ -80,14 +34,22 @@ export const useAuth = create<AuthState>(
       login: async (email, password) => {
         set({ isLoading: true, error: null });
         try {
-          const user = await mockLogin(email, password);
+          const response = await axios.post(`${API_URL}/login`, {
+            email,
+            password,
+          });
+
+          const { user, token } = response.data;
+
+          // Store token in localStorage
+          localStorage.setItem("auth-token", token);
+
           set({ user, isAuthenticated: true, isLoading: false });
-        } catch (error) {
+        } catch (error: any) {
           set({
             error:
-              error instanceof Error
-                ? error.message
-                : "An unknown error occurred",
+              error.response?.data?.message ||
+              "Login failed. Please check your credentials.",
             isLoading: false,
           });
         }
@@ -95,20 +57,61 @@ export const useAuth = create<AuthState>(
       register: async (name, email, password) => {
         set({ isLoading: true, error: null });
         try {
-          const user = await mockRegister(name, email, password);
+          const response = await axios.post(`${API_URL}/register`, {
+            name,
+            email,
+            password,
+            password_confirmation: password, // Laravel requires this for validation
+          });
+
+          const { user, token } = response.data;
+
+          // Store token in localStorage
+          localStorage.setItem("auth-token", token);
+
           set({ user, isAuthenticated: true, isLoading: false });
-        } catch (error) {
+        } catch (error: any) {
           set({
             error:
-              error instanceof Error
-                ? error.message
-                : "An unknown error occurred",
+              error.response?.data?.message ||
+              "Registration failed. Please try again.",
             isLoading: false,
           });
         }
       },
-      logout: () => {
-        set({ user: null, isAuthenticated: false });
+      logout: async () => {
+        set({ isLoading: true, error: null });
+        try {
+          const token = localStorage.getItem("auth-token");
+
+          if (token) {
+            await axios.post(
+              `${API_URL}/logout`,
+              {},
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              },
+            );
+          }
+
+          // Remove token from localStorage
+          localStorage.removeItem("auth-token");
+
+          set({ user: null, isAuthenticated: false, isLoading: false });
+        } catch (error: any) {
+          // Even if the API call fails, we should still log out the user locally
+          localStorage.removeItem("auth-token");
+          set({
+            user: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error:
+              error.response?.data?.message ||
+              "Logout failed, but you've been logged out locally.",
+          });
+        }
       },
       clearError: () => {
         set({ error: null });
