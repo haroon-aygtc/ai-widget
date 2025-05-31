@@ -100,4 +100,46 @@ export const chatApi = {
   sendMessage: (data: ChatMessageData) => api.post("/chats/send-message", data),
 };
 
+// User API
+export interface UserData {
+  name: string;
+  email: string;
+  password?: string;
+  role?: "admin" | "user";
+  status?: "active" | "inactive";
+}
+
+export const userApi = {
+  getAll: (params?: Record<string, any>) => api.get("/users", { params }),
+  getById: (id: string) => api.get(`/users/${id}`),
+  create: (data: UserData) => api.post("/users", data),
+  update: (id: string, data: UserData) => api.put(`/users/${id}`, data),
+  delete: (id: string) => api.delete(`/users/${id}`),
+  toggleStatus: (id: string) => api.patch(`/users/${id}/toggle-status`),
+};
+
+// Settings API
+export interface SettingsData {
+  type: string;
+  settings: Record<string, any>;
+}
+
+export const settingsApi = {
+  get: (type: string) => api.get(`/settings/${type}`),
+  update: (data: SettingsData) => api.post("/settings", data),
+};
+
+// API Testing Tool
+export interface ApiRequestData {
+  method: string;
+  endpoint: string;
+  headers?: Record<string, string>;
+  body?: any;
+}
+
+export const apiTestingService = {
+  discoverEndpoints: () => api.get("/api-discovery"),
+  executeRequest: (data: ApiRequestData) => api.post("/api-execute", data),
+};
+
 export default api;

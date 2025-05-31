@@ -103,9 +103,16 @@ const AIModelManagement: React.FC = () => {
             };
 
             const response = await aiModelApi.getAll(params);
-            setModels(response.data.data);
-            setTotalPages(Math.ceil(response.data.total / response.data.per_page));
+            console.log("Models API response:", response.data);
+            const modelsData = response.data?.data || response.data || [];
+            setModels(Array.isArray(modelsData) ? modelsData : []);
+
+            const total = response.data?.total || 0;
+            const perPage = response.data?.per_page || 10;
+            setTotalPages(Math.ceil(total / perPage));
         } catch (error) {
+            console.error("Failed to fetch models:", error);
+            setModels([]); // Set empty array on error
             toast({
                 title: "Error",
                 description: "Failed to load AI models",
@@ -119,8 +126,12 @@ const AIModelManagement: React.FC = () => {
     const fetchProviders = async () => {
         try {
             const response = await aiProviderApi.getAll();
-            setProviders(response.data.data);
+            console.log("Providers API response:", response.data);
+            const providersData = response.data?.data || response.data || [];
+            setProviders(Array.isArray(providersData) ? providersData : []);
         } catch (error) {
+            console.error("Failed to fetch providers:", error);
+            setProviders([]); // Set empty array on error
             toast({
                 title: "Error",
                 description: "Failed to load AI providers",
@@ -168,7 +179,7 @@ const AIModelManagement: React.FC = () => {
         setFormData({ ...formData, provider_type: value, model_id: "", ai_provider_id: "" });
 
         // Find provider with matching type
-        const selectedProvider = providers.find(p => p.provider_type === value);
+        const selectedProvider = (providers || []).find(p => p.provider_type === value);
         if (selectedProvider) {
             setFormData(prev => ({
                 ...prev,
@@ -185,7 +196,7 @@ const AIModelManagement: React.FC = () => {
     };
 
     const handleModelSelect = (modelId: string) => {
-        const selectedModelOption = availableModels.find(m => m.id === modelId);
+        const selectedModelOption = (availableModels || []).find(m => m.id === modelId);
         if (selectedModelOption) {
             setFormData(prev => ({
                 ...prev,
@@ -343,7 +354,7 @@ const AIModelManagement: React.FC = () => {
             setTestMetrics(null);
 
             // Find the provider to get the API key
-            const selectedProvider = providers.find(p => p.provider_type === formData.provider_type);
+            const selectedProvider = (providers || []).find(p => p.provider_type === formData.provider_type);
             if (!selectedProvider) {
                 throw new Error("Provider not found");
             }
@@ -400,7 +411,7 @@ const AIModelManagement: React.FC = () => {
         });
 
         // Fetch available models for this provider
-        const selectedProvider = providers.find(p => p.provider_type === model.provider_type);
+        const selectedProvider = (providers || []).find(p => p.provider_type === model.provider_type);
         if (selectedProvider) {
             fetchAvailableModels(model.provider_type, selectedProvider.api_key);
         }
@@ -485,9 +496,11 @@ const AIModelManagement: React.FC = () => {
                                     <SelectValue placeholder="All Providers" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">All Providers</SelectItem>
-                                    {Array.from(new Set(providers.map(p => p.provider_type))).map(type => (
-                                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                                    <SelectItem value="all">All Providers</SelectItem>
+                                    {(providers || []).map((provider) => (
+                                        <SelectItem key={provider.id} value={provider.id}>
+                                            {provider.provider_type}
+                                        </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -499,7 +512,7 @@ const AIModelManagement: React.FC = () => {
                                     <SelectValue placeholder="All Status" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">All Status</SelectItem>
+                                    <SelectItem value="all">All Status</SelectItem>
                                     <SelectItem value="active">Active</SelectItem>
                                     <SelectItem value="inactive">Inactive</SelectItem>
                                 </SelectContent>
@@ -511,7 +524,7 @@ const AIModelManagement: React.FC = () => {
                         <div className="flex justify-center items-center py-8">
                             <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
                         </div>
-                    ) : models.length === 0 ? (
+                    ) : (models || []).length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">
                             No models found. Create your first AI model to get started.
                         </div>
@@ -525,7 +538,7 @@ const AIModelManagement: React.FC = () => {
                                 <div className="col-span-2 text-right">Actions</div>
                             </div>
 
-                            {models.map((model) => (
+                            {(models || []).map((model) => (
                                 <div key={model.id} className="grid grid-cols-12 p-4 border-t items-center">
                                     <div className="col-span-3 font-medium flex items-center gap-2">
                                         {model.is_featured && <Star className="h-4 w-4 text-yellow-500" />}
@@ -662,7 +675,7 @@ const AIModelManagement: React.FC = () => {
                                             <SelectValue placeholder="Select Provider" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {providers.map(provider => (
+                                            {(providers || []).map(provider => (
                                                 <SelectItem key={provider.id} value={provider.provider_type}>
                                                     {provider.provider_type}
                                                 </SelectItem>
@@ -686,7 +699,7 @@ const AIModelManagement: React.FC = () => {
                                                 <SelectValue placeholder={fetchingModels ? "Loading models..." : "Select Model"} />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {availableModels.map(model => (
+                                                {(availableModels || []).map(model => (
                                                     <SelectItem key={model.id} value={model.id}>
                                                         {model.name || model.id}
                                                     </SelectItem>
@@ -836,7 +849,7 @@ const AIModelManagement: React.FC = () => {
                                             <SelectValue placeholder="Select Provider" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {providers.map(provider => (
+                                            {(providers || []).map(provider => (
                                                 <SelectItem key={provider.id} value={provider.provider_type}>
                                                     {provider.provider_type}
                                                 </SelectItem>
@@ -860,7 +873,7 @@ const AIModelManagement: React.FC = () => {
                                                 <SelectValue placeholder={fetchingModels ? "Loading models..." : "Select Model"} />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {availableModels.map(model => (
+                                                {(availableModels || []).map(model => (
                                                     <SelectItem key={model.id} value={model.id}>
                                                         {model.name || model.id}
                                                     </SelectItem>

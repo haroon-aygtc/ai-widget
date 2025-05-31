@@ -5,6 +5,9 @@ use App\Http\Controllers\API\AIModelController;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\ChatController;
 use App\Http\Controllers\API\WidgetController;
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\ApiTestingController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -27,6 +30,18 @@ Route::middleware('auth:sanctum')->group(function () {
     // User routes
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
+
+    // User management routes
+    Route::apiResource('users', UserController::class);
+    Route::patch('users/{id}/toggle-status', [UserController::class, 'toggleStatus']);
+
+    // Settings routes
+    Route::get('settings/{type}', [SettingsController::class, 'get']);
+    Route::post('settings', [SettingsController::class, 'update']);
+
+    // API Testing routes
+    Route::get('api-discovery', [ApiTestingController::class, 'discoverEndpoints']);
+    Route::post('api-execute', [ApiTestingController::class, 'executeRequest']);
 
     // AI Provider routes
     Route::apiResource('ai-providers', AIProviderController::class);

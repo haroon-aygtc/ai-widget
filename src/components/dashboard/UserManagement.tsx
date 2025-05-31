@@ -26,10 +26,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import api from "@/lib/api";
+import api, { userApi } from "@/lib/api";
 import {
   Search,
   Plus,
@@ -73,6 +72,7 @@ const UserManagement: React.FC = () => {
     email: "",
     password: "",
     role: "user" as "admin" | "user",
+    status: "active" as "active" | "inactive",
   });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -85,14 +85,18 @@ const UserManagement: React.FC = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
+      const params: Record<string, string> = {
+        page: currentPage.toString(),
+        per_page: "10",
+        sort_by: "created_at",
+        sort_order: "desc",
+      };
 
-      if (searchQuery) params.append("search", searchQuery);
-      if (roleFilter) params.append("role", roleFilter);
-      if (statusFilter) params.append("status", statusFilter);
-      params.append("page", currentPage.toString());
+      if (searchQuery) params.search = searchQuery;
+      if (roleFilter) params.role = roleFilter;
+      if (statusFilter) params.status = statusFilter;
 
-      const response = await api.get(`/users?${params.toString()}`);
+      const response = await userApi.getAll(params);
 
       if (response.data.data) {
         setUsers(response.data.data);
@@ -104,7 +108,7 @@ const UserManagement: React.FC = () => {
       console.error("Failed to fetch users:", error);
       toast({
         title: "Error",
-        description: error.response?.data?.message || "Failed to load users",
+        description: error.response?.data?.error || "Failed to load users",
         variant: "destructive",
       });
     } finally {
@@ -128,7 +132,7 @@ const UserManagement: React.FC = () => {
     if (!validateForm()) return;
 
     try {
-      const response = await api.post("/users", {
+      await userApi.create({
         ...formData,
         password_confirmation: formData.password,
       });
@@ -142,7 +146,7 @@ const UserManagement: React.FC = () => {
       fetchUsers();
     } catch (error: any) {
       const errorMessage =
-        error.response?.data?.message || "Failed to create user";
+        error.response?.data?.error || "Failed to create user";
       toast({
         title: "Error",
         description: errorMessage,
@@ -172,7 +176,7 @@ const UserManagement: React.FC = () => {
         delete updateData.password;
       }
 
-      await api.put(`/users/${selectedUser.id}`, updateData);
+      await userApi.update(selectedUser.id, updateData);
 
       toast({
         title: "Success",
@@ -183,7 +187,7 @@ const UserManagement: React.FC = () => {
       fetchUsers();
     } catch (error: any) {
       const errorMessage =
-        error.response?.data?.message || "Failed to update user";
+        error.response?.data?.error || "Failed to update user";
       toast({
         title: "Error",
         description: errorMessage,
@@ -208,7 +212,7 @@ const UserManagement: React.FC = () => {
     if (!confirm("Are you sure you want to delete this user?")) return;
 
     try {
-      await api.delete(`/users/${id}`);
+      await userApi.delete(id);
       toast({
         title: "Success",
         description: "User deleted successfully",
@@ -217,7 +221,7 @@ const UserManagement: React.FC = () => {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.response?.data?.message || "Failed to delete user",
+        description: error.response?.data?.error || "Failed to delete user",
         variant: "destructive",
       });
     }
@@ -225,7 +229,7 @@ const UserManagement: React.FC = () => {
 
   const handleToggleStatus = async (id: string) => {
     try {
-      await api.patch(`/users/${id}/toggle-status`);
+      await userApi.toggleStatus(id);
       toast({
         title: "Success",
         description: "User status updated successfully",
@@ -235,7 +239,7 @@ const UserManagement: React.FC = () => {
       toast({
         title: "Error",
         description:
-          error.response?.data?.message || "Failed to update user status",
+          error.response?.data?.error || "Failed to update user status",
         variant: "destructive",
       });
     }
@@ -248,6 +252,7 @@ const UserManagement: React.FC = () => {
       email: user.email,
       password: "",
       role: user.role,
+      status: user.status || "active",
     });
     setFormErrors({});
     setIsEditDialogOpen(true);
@@ -259,6 +264,7 @@ const UserManagement: React.FC = () => {
       email: "",
       password: "",
       role: "user",
+      status: "active",
     });
     setFormErrors({});
     setSelectedUser(null);
@@ -346,7 +352,7 @@ const UserManagement: React.FC = () => {
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <span className="ml-2">Loading users...</span>
             </div>
-          ) : users.length === 0 ? (
+          ) : (users || []).length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No users found.
             </div>
@@ -566,6 +572,29 @@ const UserManagement: React.FC = () => {
                 <p className="text-sm text-red-500">{formErrors.role}</p>
               )}
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value: "active" | "inactive") =>
+                  setFormData({ ...formData, status: value })
+                }
+              >
+                <SelectTrigger
+                  className={formErrors.status ? "border-red-500" : ""}
+                >
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+              {formErrors.status && (
+                <p className="text-sm text-red-500">{formErrors.status}</p>
+              )}
+            </div>
           </div>
 
           <DialogFooter>
@@ -661,6 +690,29 @@ const UserManagement: React.FC = () => {
               </Select>
               {formErrors.role && (
                 <p className="text-sm text-red-500">{formErrors.role}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit_status">Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value: "active" | "inactive") =>
+                  setFormData({ ...formData, status: value })
+                }
+              >
+                <SelectTrigger
+                  className={formErrors.status ? "border-red-500" : ""}
+                >
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+              {formErrors.status && (
+                <p className="text-sm text-red-500">{formErrors.status}</p>
               )}
             </div>
           </div>

@@ -549,7 +549,7 @@ const WidgetBuilder = () => {
                           <SelectValue placeholder="Select AI provider" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">No Provider</SelectItem>
+                          <SelectItem value="none">No Provider</SelectItem>
                           {providers.map((provider) => (
                             <SelectItem key={provider.id} value={provider.id}>
                               {provider.provider_type} - {provider.model}

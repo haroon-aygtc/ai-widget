@@ -52,9 +52,12 @@ const WidgetList: React.FC = () => {
     }
   };
 
-  const activeWidgets = widgets.filter((widget) => widget.status === "active");
-  const draftWidgets = widgets.filter((widget) => widget.status === "draft");
-  const archivedWidgets = widgets.filter((widget) => widget.status === "archived");
+  // Ensure widgets is always an array
+  const widgetList = Array.isArray(widgets) ? widgets : [];
+
+  const activeWidgets = widgetList.filter((widget) => widget.status === "active");
+  const draftWidgets = widgetList.filter((widget) => widget.status === "draft");
+  const archivedWidgets = widgetList.filter((widget) => widget.status === "archived");
 
   if (isLoading) {
     return (

@@ -4,6 +4,8 @@ import { aiProviderApi, widgetApi } from './api';
 
 // Types
 export interface AIProvider {
+  [x: string]: ReactNode;
+  provider_type: ReactNode;
   id?: string;
   provider: string;
   apiKey: string;
@@ -19,6 +21,8 @@ export interface AIProvider {
 }
 
 export interface Widget {
+  description: string;
+  ai_provider_id: string;
   id?: string;
   name: string;
   design: {
@@ -166,91 +170,93 @@ export const useAIProviderStore = create<AIProviderState>(
 
 // Widget Store
 export const useWidgetStore = create<WidgetState>(
-  persist(
-    (set, get) => ({
-      widgets: [],
-      currentWidget: null,
-      isLoading: false,
-      error: null,
-      fetchWidgets: async () => {
-        set({ isLoading: true, error: null });
-        try {
-          const response = await widgetApi.getAll();
-          set({ widgets: response.data, isLoading: false });
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : 'Failed to fetch widgets',
-            isLoading: false,
-          });
-        }
-      },
-      createWidget: async (widget) => {
-        set({ isLoading: true, error: null });
-        try {
-          const response = await widgetApi.create(widget);
-          set(state => ({
-            widgets: [...state.widgets, response.data],
-            currentWidget: response.data,
-            isLoading: false,
-          }));
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : 'Failed to create widget',
-            isLoading: false,
-          });
-        }
-      },
-      updateWidget: async (id, widget) => {
-        set({ isLoading: true, error: null });
-        try {
-          const response = await widgetApi.update(id, widget);
-          set(state => ({
-            widgets: state.widgets.map(w => (w.id === id ? response.data : w)),
-            currentWidget: response.data,
-            isLoading: false,
-          }));
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : 'Failed to update widget',
-            isLoading: false,
-          });
-        }
-      },
-      deleteWidget: async (id) => {
-        set({ isLoading: true, error: null });
-        try {
-          await widgetApi.delete(id);
-          set(state => ({
-            widgets: state.widgets.filter(w => w.id !== id),
-            currentWidget: state.currentWidget?.id === id ? null : state.currentWidget,
-            isLoading: false,
-          }));
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : 'Failed to delete widget',
-            isLoading: false,
-          });
-        }
-      },
-      setCurrentWidget: (widget) => set({ currentWidget: widget }),
-      generateEmbedCode: async (id) => {
-        set({ isLoading: true, error: null });
-        try {
-          const response = await widgetApi.generateEmbedCode(id);
-          set({ isLoading: false });
-          return response.data.embed_code || '';
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : 'Failed to generate embed code',
-            isLoading: false,
-          });
-          return '';
-        }
-      },
-      clearError: () => set({ error: null }),
-    }),
-    {
-      name: 'widget-storage',
-    }
-  )
+  (set, get) => ({
+    widgets: [],
+    currentWidget: null,
+    isLoading: false,
+    error: null,
+    fetchWidgets: async () => {
+      set({ isLoading: true, error: null });
+      try {
+        const response = await widgetApi.getAll();
+        // Ensure response.data is an array
+        const widgetsData = Array.isArray(response.data) ? response.data : [];
+        set({ widgets: widgetsData, isLoading: false });
+      } catch (error) {
+        set({
+          error: error instanceof Error ? error.message : 'Failed to fetch widgets',
+          isLoading: false,
+          widgets: [], // Reset to empty array on error
+        });
+      }
+    },
+    createWidget: async (widget) => {
+      set({ isLoading: true, error: null });
+      try {
+        const response = await widgetApi.create(widget);
+        set(state => ({
+          widgets: Array.isArray(state.widgets) ? [...state.widgets, response.data] : [response.data],
+          currentWidget: response.data,
+          isLoading: false,
+        }));
+      } catch (error) {
+        set({
+          error: error instanceof Error ? error.message : 'Failed to create widget',
+          isLoading: false,
+        });
+      }
+    },
+    updateWidget: async (id, widget) => {
+      set({ isLoading: true, error: null });
+      try {
+        const response = await widgetApi.update(id, widget);
+        set(state => ({
+          widgets: Array.isArray(state.widgets)
+            ? state.widgets.map(w => (w.id === id ? response.data : w))
+            : [response.data],
+          currentWidget: response.data,
+          isLoading: false,
+        }));
+      } catch (error) {
+        set({
+          error: error instanceof Error ? error.message : 'Failed to update widget',
+          isLoading: false,
+        });
+      }
+    },
+    deleteWidget: async (id) => {
+      set({ isLoading: true, error: null });
+      try {
+        await widgetApi.delete(id);
+        set(state => ({
+          widgets: Array.isArray(state.widgets)
+            ? state.widgets.filter(w => w.id !== id)
+            : [],
+          currentWidget: state.currentWidget?.id === id ? null : state.currentWidget,
+          isLoading: false,
+        }));
+      } catch (error) {
+        set({
+          error: error instanceof Error ? error.message : 'Failed to delete widget',
+          isLoading: false,
+        });
+      }
+    },
+    setCurrentWidget: (widget) => set({ currentWidget: widget }),
+    generateEmbedCode: async (id) => {
+      set({ isLoading: true, error: null });
+      try {
+        const response = await widgetApi.generateEmbedCode(id);
+        set({ isLoading: false });
+        return response.data.embed_code || '';
+      } catch (error) {
+        set({
+          error: error instanceof Error ? error.message : 'Failed to generate embed code',
+          isLoading: false,
+        });
+        return '';
+      }
+    },
+    clearError: () => set({ error: null }),
+  })
 );
