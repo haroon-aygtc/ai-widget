@@ -42,7 +42,7 @@ interface AIProviderConfig {
 }
 
 const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
-  onSave = () => { },
+  onSave = () => {},
 }) => {
   const [activeProvider, setActiveProvider] = useState<string>("openai");
   const [apiKey, setApiKey] = useState<string>("");
@@ -67,19 +67,37 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     { id: "mistral", name: "Mistral AI", logo: "🌪️" },
     { id: "groq", name: "Groq", logo: "⚡" },
     { id: "huggingface", name: "HuggingFace", logo: "🤗" },
+    { id: "grok", name: "Grok (X.AI)", logo: "✖️" },
+    { id: "openrouter", name: "OpenRouter", logo: "🔄" },
+    { id: "deepseek", name: "DeepSeek", logo: "🔍" },
   ];
 
   const modelsByProvider: Record<string, string[]> = {
     openai: ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4-vision"],
     gemini: ["gemini-pro", "gemini-ultra", "gemini-flash"],
-    claude: ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
-    mistral: ["mistral-large", "mistral-medium", "mistral-small"],
-    groq: ["llama3-70b", "llama3-8b", "mixtral-8x7b"],
+    claude: [
+      "claude-3-opus-20240229",
+      "claude-3-sonnet-20240229",
+      "claude-3-haiku-20240307",
+    ],
+    mistral: [
+      "mistral-large-latest",
+      "mistral-medium-latest",
+      "mistral-small-latest",
+    ],
+    groq: ["llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768"],
     huggingface: [
-      "meta-llama/Llama-2-70b",
-      "mistralai/Mixtral-8x7B",
+      "meta-llama/Llama-2-70b-chat-hf",
+      "mistralai/Mixtral-8x7B-Instruct-v0.1",
       "google/gemma-7b",
     ],
+    grok: ["grok-1"],
+    openrouter: [
+      "openai/gpt-4o",
+      "anthropic/claude-3-opus",
+      "meta-llama/llama-3-70b-instruct",
+    ],
+    deepseek: ["deepseek-chat", "deepseek-coder"],
   };
 
   const handleProviderChange = (provider: string) => {
@@ -110,6 +128,13 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
       if (response.data.success) {
         setTestStatus("success");
         setTestMessage(response.data.message || "Connection successful!");
+
+        // If models were returned, update the model dropdown
+        if (response.data.models && response.data.models.length > 0) {
+          // Update the modelsByProvider for this provider
+          const updatedModels = [...response.data.models];
+          setModel(updatedModels[0]); // Set the first model as selected
+        }
       } else {
         setTestStatus("error");
         setTestMessage(

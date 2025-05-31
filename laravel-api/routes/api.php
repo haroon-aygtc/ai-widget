@@ -31,6 +31,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('ai-providers', AIProviderController::class);
     Route::post('ai-providers/test-connection', [AIProviderController::class, 'testConnection']);
     Route::post('ai-providers/generate-response', [AIProviderController::class, 'generateResponse']);
+    Route::get('ai-providers/available', [AIProviderController::class, 'getAvailableProviders']);
     
     // Widget routes
     Route::apiResource('widgets', WidgetController::class);

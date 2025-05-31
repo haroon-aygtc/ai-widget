@@ -4,14 +4,13 @@ namespace App\Services\AI;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Client\RequestException;
-use Illuminate\Http\StreamedResponse;
 
-class OpenAIService
+class GroqService
 {
-    protected string $apiUrl = 'https://api.openai.com/v1/chat/completions';
+    protected string $apiUrl = 'https://api.groq.com/openai/v1/chat/completions';
     
     /**
-     * Generate a response using OpenAI
+     * Generate a response using Groq
      *
      * @param string $message
      * @param array $config
@@ -21,15 +20,14 @@ class OpenAIService
     public function generateResponse(string $message, array $config = [])
     {
         // Extract configuration parameters
-        $apiKey = $config['apiKey'] ?? env('OPENAI_API_KEY');
-        $model = $config['model'] ?? 'gpt-4o';
+        $apiKey = $config['apiKey'] ?? env('GROQ_API_KEY');
+        $model = $config['model'] ?? 'llama3-70b-8192';
         $temperature = $config['temperature'] ?? 0.7;
         $maxTokens = $config['maxTokens'] ?? 2048;
         $systemPrompt = $config['systemPrompt'] ?? 'You are a helpful assistant.';
-        $topP = $config['topP'] ?? 1.0;
         
         if (!$apiKey) {
-            throw new \Exception('OpenAI API key is required');
+            throw new \Exception('Groq API key is required');
         }
         
         try {
@@ -37,7 +35,7 @@ class OpenAIService
                 'Authorization' => 'Bearer ' . $apiKey,
                 'Content-Type' => 'application/json',
             ])
-            ->timeout(60)
+            ->timeout(30) // Groq is known for speed
             ->retry(3, 1000)
             ->post($this->apiUrl, [
                 'model' => $model,
@@ -47,8 +45,6 @@ class OpenAIService
                 ],
                 'temperature' => (float) $temperature,
                 'max_tokens' => (int) $maxTokens,
-                'top_p' => (float) $topP,
-                'stream' => false
             ]);
             
             if ($response->successful()) {
@@ -65,39 +61,38 @@ class OpenAIService
                     ],
                     'id' => $data['id'] ?? null,
                     'created' => $data['created'] ?? time(),
-                    'provider' => 'openai'
+                    'provider' => 'groq'
                 ];
             } else {
                 return [
                     'success' => false,
                     'error' => $response->json()['error']['message'] ?? 'Unknown error',
                     'status' => $response->status(),
-                    'provider' => 'openai'
+                    'provider' => 'groq'
                 ];
             }
         } catch (RequestException $e) {
-            throw new \Exception('OpenAI API error: ' . $e->getMessage());
+            throw new \Exception('Groq API error: ' . $e->getMessage());
         }
     }
     
     /**
-     * Stream a response from OpenAI
+     * Stream a response from Groq
      *
      * @param string $message
      * @param array $config
-     * @return StreamedResponse
+     * @return \Illuminate\Http\StreamedResponse
      */
     public function streamResponse(string $message, array $config = [])
     {
         // Extract configuration parameters
-        $apiKey = $config['apiKey'] ?? env('OPENAI_API_KEY');
-        $model = $config['model'] ?? 'gpt-4o';
+        $apiKey = $config['apiKey'] ?? env('GROQ_API_KEY');
+        $model = $config['model'] ?? 'llama3-70b-8192';
         $temperature = $config['temperature'] ?? 0.7;
         $maxTokens = $config['maxTokens'] ?? 2048;
         $systemPrompt = $config['systemPrompt'] ?? 'You are a helpful assistant.';
-        $topP = $config['topP'] ?? 1.0;
         
-        return response()->stream(function () use ($apiKey, $model, $message, $temperature, $maxTokens, $systemPrompt, $topP) {
+        return response()->stream(function () use ($apiKey, $model, $message, $temperature, $maxTokens, $systemPrompt) {
             $curl = curl_init();
             
             $payload = json_encode([
@@ -108,7 +103,6 @@ class OpenAIService
                 ],
                 'temperature' => (float) $temperature,
                 'max_tokens' => (int) $maxTokens,
-                'top_p' => (float) $topP,
                 'stream' => true
             ]);
             
@@ -128,12 +122,8 @@ class OpenAIService
                 ],
                 CURLOPT_WRITEFUNCTION => function ($curl, $data) {
                     echo $data;
-                    
-                    // Calculate the length of the data
                     $len = strlen($data);
                     flush();
-                    
-                    // Return the number of bytes handled
                     return $len;
                 }
             ]);
@@ -149,7 +139,7 @@ class OpenAIService
     }
     
     /**
-     * Test connection to OpenAI
+     * Test connection to Groq
      *
      * @param array $config
      * @return array
@@ -163,7 +153,7 @@ class OpenAIService
                 return [
                     'success' => false,
                     'message' => 'API key is required',
-                    'provider' => 'openai'
+                    'provider' => 'groq'
                 ];
             }
             
@@ -172,13 +162,13 @@ class OpenAIService
                 'Content-Type' => 'application/json',
             ])
             ->timeout(10)
-            ->get('https://api.openai.com/v1/models');
+            ->get('https://api.groq.com/openai/v1/models');
             
             if ($response->successful()) {
                 return [
                     'success' => true,
                     'message' => 'Connection successful',
-                    'provider' => 'openai',
+                    'provider' => 'groq',
                     'models' => array_map(function($model) {
                         return $model['id'];
                     }, $response->json()['data'] ?? [])
@@ -187,14 +177,14 @@ class OpenAIService
                 return [
                     'success' => false,
                     'message' => $response->json()['error']['message'] ?? 'Connection failed',
-                    'provider' => 'openai'
+                    'provider' => 'groq'
                 ];
             }
         } catch (\Exception $e) {
             return [
                 'success' => false,
                 'message' => 'Connection error: ' . $e->getMessage(),
-                'provider' => 'openai'
+                'provider' => 'groq'
             ];
         }
     }

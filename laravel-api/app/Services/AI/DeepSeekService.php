@@ -4,14 +4,13 @@ namespace App\Services\AI;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Client\RequestException;
-use Illuminate\Http\StreamedResponse;
 
-class OpenAIService
+class DeepSeekService
 {
-    protected string $apiUrl = 'https://api.openai.com/v1/chat/completions';
+    protected string $apiUrl = 'https://api.deepseek.com/v1/chat/completions';
     
     /**
-     * Generate a response using OpenAI
+     * Generate a response using DeepSeek
      *
      * @param string $message
      * @param array $config
@@ -21,15 +20,14 @@ class OpenAIService
     public function generateResponse(string $message, array $config = [])
     {
         // Extract configuration parameters
-        $apiKey = $config['apiKey'] ?? env('OPENAI_API_KEY');
-        $model = $config['model'] ?? 'gpt-4o';
+        $apiKey = $config['apiKey'] ?? env('DEEPSEEK_API_KEY');
+        $model = $config['model'] ?? 'deepseek-chat';
         $temperature = $config['temperature'] ?? 0.7;
         $maxTokens = $config['maxTokens'] ?? 2048;
         $systemPrompt = $config['systemPrompt'] ?? 'You are a helpful assistant.';
-        $topP = $config['topP'] ?? 1.0;
         
         if (!$apiKey) {
-            throw new \Exception('OpenAI API key is required');
+            throw new \Exception('DeepSeek API key is required');
         }
         
         try {
@@ -47,8 +45,6 @@ class OpenAIService
                 ],
                 'temperature' => (float) $temperature,
                 'max_tokens' => (int) $maxTokens,
-                'top_p' => (float) $topP,
-                'stream' => false
             ]);
             
             if ($response->successful()) {
@@ -65,91 +61,23 @@ class OpenAIService
                     ],
                     'id' => $data['id'] ?? null,
                     'created' => $data['created'] ?? time(),
-                    'provider' => 'openai'
+                    'provider' => 'deepseek'
                 ];
             } else {
                 return [
                     'success' => false,
                     'error' => $response->json()['error']['message'] ?? 'Unknown error',
                     'status' => $response->status(),
-                    'provider' => 'openai'
+                    'provider' => 'deepseek'
                 ];
             }
         } catch (RequestException $e) {
-            throw new \Exception('OpenAI API error: ' . $e->getMessage());
+            throw new \Exception('DeepSeek API error: ' . $e->getMessage());
         }
     }
     
     /**
-     * Stream a response from OpenAI
-     *
-     * @param string $message
-     * @param array $config
-     * @return StreamedResponse
-     */
-    public function streamResponse(string $message, array $config = [])
-    {
-        // Extract configuration parameters
-        $apiKey = $config['apiKey'] ?? env('OPENAI_API_KEY');
-        $model = $config['model'] ?? 'gpt-4o';
-        $temperature = $config['temperature'] ?? 0.7;
-        $maxTokens = $config['maxTokens'] ?? 2048;
-        $systemPrompt = $config['systemPrompt'] ?? 'You are a helpful assistant.';
-        $topP = $config['topP'] ?? 1.0;
-        
-        return response()->stream(function () use ($apiKey, $model, $message, $temperature, $maxTokens, $systemPrompt, $topP) {
-            $curl = curl_init();
-            
-            $payload = json_encode([
-                'model' => $model,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $message]
-                ],
-                'temperature' => (float) $temperature,
-                'max_tokens' => (int) $maxTokens,
-                'top_p' => (float) $topP,
-                'stream' => true
-            ]);
-            
-            curl_setopt_array($curl, [
-                CURLOPT_URL => $this->apiUrl,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_ENCODING => '',
-                CURLOPT_MAXREDIRS => 10,
-                CURLOPT_TIMEOUT => 0,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                CURLOPT_CUSTOMREQUEST => 'POST',
-                CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_HTTPHEADER => [
-                    'Content-Type: application/json',
-                    'Authorization: Bearer ' . $apiKey
-                ],
-                CURLOPT_WRITEFUNCTION => function ($curl, $data) {
-                    echo $data;
-                    
-                    // Calculate the length of the data
-                    $len = strlen($data);
-                    flush();
-                    
-                    // Return the number of bytes handled
-                    return $len;
-                }
-            ]);
-            
-            curl_exec($curl);
-            curl_close($curl);
-        }, 200, [
-            'Cache-Control' => 'no-cache',
-            'Content-Type' => 'text/event-stream',
-            'X-Accel-Buffering' => 'no',
-            'Connection' => 'keep-alive',
-        ]);
-    }
-    
-    /**
-     * Test connection to OpenAI
+     * Test connection to DeepSeek
      *
      * @param array $config
      * @return array
@@ -163,7 +91,7 @@ class OpenAIService
                 return [
                     'success' => false,
                     'message' => 'API key is required',
-                    'provider' => 'openai'
+                    'provider' => 'deepseek'
                 ];
             }
             
@@ -172,13 +100,13 @@ class OpenAIService
                 'Content-Type' => 'application/json',
             ])
             ->timeout(10)
-            ->get('https://api.openai.com/v1/models');
+            ->get('https://api.deepseek.com/v1/models');
             
             if ($response->successful()) {
                 return [
                     'success' => true,
                     'message' => 'Connection successful',
-                    'provider' => 'openai',
+                    'provider' => 'deepseek',
                     'models' => array_map(function($model) {
                         return $model['id'];
                     }, $response->json()['data'] ?? [])
@@ -187,14 +115,14 @@ class OpenAIService
                 return [
                     'success' => false,
                     'message' => $response->json()['error']['message'] ?? 'Connection failed',
-                    'provider' => 'openai'
+                    'provider' => 'deepseek'
                 ];
             }
         } catch (\Exception $e) {
             return [
                 'success' => false,
                 'message' => 'Connection error: ' . $e->getMessage(),
-                'provider' => 'openai'
+                'provider' => 'deepseek'
             ];
         }
     }
