@@ -27,7 +27,7 @@ class HuggingFaceService
     public function generateResponse(string $message, array $context = [])
     {
         // Use provider configuration
-        $apiKey = $this->provider->api_key;
+        $apiKey = $this->provider->getRawApiKey();
         $model = $this->provider->model;
         $temperature = $this->provider->temperature;
         $maxTokens = $this->provider->max_tokens;
@@ -40,6 +40,13 @@ class HuggingFaceService
         try {
             // Format the prompt based on the model and context
             $prompt = $this->formatPrompt($message, $systemPrompt, $model, $context);
+
+            \Log::debug('HuggingFace API request', [
+                'model' => $model,
+                'prompt_length' => strlen($prompt),
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 6) . '...'
+            ]);
 
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $apiKey,
@@ -80,9 +87,18 @@ class HuggingFaceService
                     'provider_id' => $this->provider->id
                 ];
             } else {
+                $errorData = $response->json();
+                $errorMessage = $errorData['error'] ?? 'Unknown error';
+
+                \Log::error('HuggingFace API error response', [
+                    'status' => $response->status(),
+                    'error_message' => $errorMessage,
+                    'response' => $response->body()
+                ]);
+
                 return [
                     'success' => false,
-                    'error' => $response->json()['error'] ?? 'Unknown error',
+                    'error' => $errorMessage,
                     'status' => $response->status(),
                     'provider' => 'huggingface',
                     'provider_id' => $this->provider->id
@@ -179,19 +195,120 @@ class HuggingFaceService
     public function testConnection(array $config): array
     {
         try {
+            $apiKey = $this->provider->getRawApiKey();
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'provider' => 'huggingface'
+                ];
+            }
+
+            \Log::info('Testing HuggingFace API connection', [
+                'model' => $this->provider->model,
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 6) . '...'
+            ]);
+
             $result = $this->generateResponse('Hello, this is a test message.', []);
 
+            if (!$result['success']) {
+                $errorMessage = $result['error'] ?? 'Connection failed';
+
+                // Provide more helpful error messages
+                if (isset($result['status']) && $result['status'] === 401) {
+                    $errorMessage = 'Authentication failed. Please check your HuggingFace API key';
+                }
+
+                return [
+                    'success' => false,
+                    'message' => $errorMessage,
+                    'provider' => 'huggingface',
+                    'model' => $this->provider->model,
+                    'details' => $result
+                ];
+            }
+
             return [
-                'success' => $result['success'],
-                'message' => $result['success'] ? 'Connection successful' : ($result['error'] ?? 'Connection failed'),
+                'success' => true,
+                'message' => 'Connection successful',
                 'provider' => 'huggingface',
+                'model' => $this->provider->model,
+                'response_content' => substr($result['content'] ?? '', 0, 50) . '...'
+            ];
+        } catch (\Exception $e) {
+            \Log::error('HuggingFace API connection test failed', [
+                'error' => $e->getMessage(),
                 'model' => $this->provider->model
+            ]);
+
+            $errorMessage = $e->getMessage();
+
+            // Improve error message for common issues
+            if (stripos($errorMessage, '401') !== false || stripos($errorMessage, 'unauthorized') !== false) {
+                $errorMessage = 'Authentication failed. Please check your HuggingFace API key';
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Connection error: ' . $errorMessage,
+                'provider' => 'huggingface'
+            ];
+        }
+    }
+
+    /**
+     * Get available models from HuggingFace API
+     *
+     * @return array
+     */
+    public function getAvailableModels(): array
+    {
+        try {
+            $apiKey = $this->provider->decrypted_api_key;
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'models' => []
+                ];
+            }
+
+            // HuggingFace doesn't have a models endpoint, return popular models
+            $models = [
+                [
+                    'id' => 'microsoft/DialoGPT-medium',
+                    'name' => 'DialoGPT Medium',
+                    'description' => 'Conversational AI model'
+                ],
+                [
+                    'id' => 'microsoft/DialoGPT-large',
+                    'name' => 'DialoGPT Large',
+                    'description' => 'Large conversational AI model'
+                ],
+                [
+                    'id' => 'facebook/blenderbot-400M-distill',
+                    'name' => 'BlenderBot 400M',
+                    'description' => 'Conversational AI model'
+                ],
+                [
+                    'id' => 'microsoft/GODEL-v1_1-large-seq2seq',
+                    'name' => 'GODEL Large',
+                    'description' => 'Goal-oriented dialog model'
+                ]
+            ];
+
+            return [
+                'success' => true,
+                'models' => $models
             ];
         } catch (\Exception $e) {
             return [
                 'success' => false,
-                'message' => 'Connection error: ' . $e->getMessage(),
-                'provider' => 'huggingface'
+                'message' => $e->getMessage(),
+                'models' => []
             ];
         }
     }

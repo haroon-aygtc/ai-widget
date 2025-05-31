@@ -32,7 +32,7 @@ class MistralService
 
         try {
             // Use provider configuration
-            $apiKey = $this->provider->api_key;
+            $apiKey = $this->provider->getRawApiKey();
             $model = $this->provider->model;
             $temperature = $this->provider->temperature;
             $maxTokens = $this->provider->max_tokens;
@@ -135,19 +135,60 @@ class MistralService
     public function testConnection(array $config): array
     {
         try {
+            $apiKey = $this->provider->getRawApiKey();
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'provider' => 'mistral'
+                ];
+            }
+
+            \Log::info('Testing Mistral API connection', [
+                'model' => $this->provider->model,
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 6) . '...'
+            ]);
+
             $result = $this->generateResponse('Hello, this is a test message.', []);
 
+            if (!$result['success']) {
+                $errorMessage = $result['message'] ?? 'Connection failed';
+
+                return [
+                    'success' => false,
+                    'message' => $errorMessage,
+                    'provider' => 'mistral',
+                    'model' => $this->provider->model,
+                    'details' => $result
+                ];
+            }
+
             return [
-                'success' => $result['success'],
-                'message' => $result['success'] ? 'Connection successful' : $result['message'],
+                'success' => true,
+                'message' => 'Connection successful',
                 'provider' => 'mistral',
                 'model' => $this->provider->model,
-                'response_time' => $result['response_time'] ?? null
+                'response_time' => $result['response_time'] ?? null,
+                'response_content' => substr($result['content'] ?? '', 0, 50) . '...'
             ];
         } catch (\Exception $e) {
+            \Log::error('Mistral API connection test failed', [
+                'error' => $e->getMessage(),
+                'model' => $this->provider->model
+            ]);
+
+            $errorMessage = $e->getMessage();
+
+            // Improve error message for common issues
+            if (stripos($errorMessage, '401') !== false || stripos($errorMessage, 'unauthorized') !== false) {
+                $errorMessage = 'Authentication failed. Please check your Mistral API key';
+            }
+
             return [
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => 'Connection error: ' . $errorMessage,
                 'provider' => 'mistral'
             ];
         }
@@ -165,7 +206,7 @@ class MistralService
         return response()->stream(function () use ($message, $context) {
             try {
                 // Use provider configuration
-                $apiKey = $this->provider->api_key;
+                $apiKey = $this->provider->getRawApiKey();
                 $model = $this->provider->model;
                 $temperature = $this->provider->temperature;
                 $maxTokens = $this->provider->max_tokens;
@@ -244,19 +285,59 @@ class MistralService
     }
 
     /**
-     * Get available models.
+     * Get available models from Mistral API
      *
      * @return array
      */
     public function getAvailableModels(): array
     {
-        return [
-            'mistral-small-latest' => 'Mistral Small',
-            'mistral-medium-latest' => 'Mistral Medium',
-            'mistral-large-latest' => 'Mistral Large',
-            'open-mistral-7b' => 'Open Mistral 7B',
-            'open-mixtral-8x7b' => 'Open Mixtral 8x7B',
-            'open-mixtral-8x22b' => 'Open Mixtral 8x22B',
-        ];
+        try {
+            $apiKey = $this->provider->decrypted_api_key;
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'models' => []
+                ];
+            }
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(10)
+            ->get($this->baseUrl . '/models');
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $models = [];
+
+                foreach ($data['data'] as $model) {
+                    $models[] = [
+                        'id' => $model['id'],
+                        'name' => $model['id'],
+                        'description' => 'Mistral model'
+                    ];
+                }
+
+                return [
+                    'success' => true,
+                    'models' => $models
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to fetch models',
+                    'models' => []
+                ];
+            }
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'models' => []
+            ];
+        }
     }
 }

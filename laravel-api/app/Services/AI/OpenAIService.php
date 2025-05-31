@@ -28,7 +28,7 @@ class OpenAIService
     public function generateResponse(string $message, array $context = [])
     {
         // Use provider configuration
-        $apiKey = $this->provider->api_key;
+        $apiKey = $this->provider->getRawApiKey();
         $model = $this->provider->model;
         $temperature = $this->provider->temperature;
         $maxTokens = $this->provider->max_tokens;
@@ -116,25 +116,41 @@ class OpenAIService
      * @param array $config
      * @return StreamedResponse
      */
-    public function streamResponse(string $message, array $config = [])
+    public function streamResponse(string $message, array $context = [])
     {
-        // Extract configuration parameters
-        $apiKey = $config['apiKey'] ?? env('OPENAI_API_KEY');
-        $model = $config['model'] ?? 'gpt-4o';
-        $temperature = $config['temperature'] ?? 0.7;
-        $maxTokens = $config['maxTokens'] ?? 2048;
-        $systemPrompt = $config['systemPrompt'] ?? 'You are a helpful assistant.';
-        $topP = $config['topP'] ?? 1.0;
+        // Use provider configuration
+        $apiKey = $this->provider->getRawApiKey();
+        $model = $this->provider->model;
+        $temperature = $this->provider->temperature;
+        $maxTokens = $this->provider->max_tokens;
+        $systemPrompt = $this->provider->system_prompt;
+        $advancedSettings = $this->provider->advanced_settings ?? [];
+        $topP = $advancedSettings['top_p'] ?? 1.0;
 
-        return response()->stream(function () use ($apiKey, $model, $message, $temperature, $maxTokens, $systemPrompt, $topP) {
+        return response()->stream(function () use ($apiKey, $model, $message, $context, $temperature, $maxTokens, $systemPrompt, $topP) {
             $curl = curl_init();
+
+            // Build messages array with context
+            $messages = [
+                ['role' => 'system', 'content' => $systemPrompt]
+            ];
+
+            // Add conversation context if provided
+            if (!empty($context['conversation_history'])) {
+                foreach ($context['conversation_history'] as $msg) {
+                    $messages[] = [
+                        'role' => $msg['role'] ?? 'user',
+                        'content' => $msg['content']
+                    ];
+                }
+            }
+
+            // Add current message
+            $messages[] = ['role' => 'user', 'content' => $message];
 
             $payload = json_encode([
                 'model' => $model,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $message]
-                ],
+                'messages' => $messages,
                 'temperature' => (float) $temperature,
                 'max_tokens' => (int) $maxTokens,
                 'top_p' => (float) $topP,
@@ -186,13 +202,84 @@ class OpenAIService
     public function testConnection(array $config): array
     {
         try {
-            $apiKey = $config['apiKey'] ?? null;
+            $apiKey = $this->provider->getRawApiKey();
 
             if (!$apiKey) {
                 return [
                     'success' => false,
                     'message' => 'API key is required',
                     'provider' => 'openai'
+                ];
+            }
+
+            \Log::info('Testing OpenAI API connection', [
+                'model' => $this->provider->model,
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 7) . '...'
+            ]);
+
+            $result = $this->generateResponse('Hello, this is a test message.', []);
+
+            if (!$result['success']) {
+                $errorMessage = $result['error'] ?? 'Connection failed';
+
+                // Provide more helpful error messages
+                if (isset($result['status']) && $result['status'] === 401) {
+                    $errorMessage = 'Authentication failed. Please check your OpenAI API key';
+                }
+
+                return [
+                    'success' => false,
+                    'message' => $errorMessage,
+                    'provider' => 'openai',
+                    'model' => $this->provider->model,
+                    'details' => $result
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Connection successful',
+                'provider' => 'openai',
+                'model' => $this->provider->model,
+                'response_content' => substr($result['content'] ?? '', 0, 50) . '...'
+            ];
+        } catch (\Exception $e) {
+            \Log::error('OpenAI API connection test failed', [
+                'error' => $e->getMessage(),
+                'model' => $this->provider->model
+            ]);
+
+            $errorMessage = $e->getMessage();
+
+            // Improve error message for common issues
+            if (stripos($errorMessage, '401') !== false || stripos($errorMessage, 'unauthorized') !== false) {
+                $errorMessage = 'Authentication failed. Please check your OpenAI API key';
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Connection error: ' . $errorMessage,
+                'provider' => 'openai'
+            ];
+        }
+    }
+
+    /**
+     * Get available models from OpenAI API
+     *
+     * @return array
+     */
+    public function getAvailableModels(): array
+    {
+        try {
+            $apiKey = $this->provider->decrypted_api_key;
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'models' => []
                 ];
             }
 
@@ -204,26 +291,33 @@ class OpenAIService
             ->get('https://api.openai.com/v1/models');
 
             if ($response->successful()) {
+                $data = $response->json();
+                $models = [];
+
+                foreach ($data['data'] as $model) {
+                    $models[] = [
+                        'id' => $model['id'],
+                        'name' => $model['id'],
+                        'description' => 'OpenAI model'
+                    ];
+                }
+
                 return [
                     'success' => true,
-                    'message' => 'Connection successful',
-                    'provider' => 'openai',
-                    'models' => array_map(function($model) {
-                        return $model['id'];
-                    }, $response->json()['data'] ?? [])
+                    'models' => $models
                 ];
             } else {
                 return [
                     'success' => false,
-                    'message' => $response->json()['error']['message'] ?? 'Connection failed',
-                    'provider' => 'openai'
+                    'message' => 'Failed to fetch models',
+                    'models' => []
                 ];
             }
         } catch (\Exception $e) {
             return [
                 'success' => false,
-                'message' => 'Connection error: ' . $e->getMessage(),
-                'provider' => 'openai'
+                'message' => $e->getMessage(),
+                'models' => []
             ];
         }
     }

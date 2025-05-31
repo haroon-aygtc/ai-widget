@@ -6,7 +6,6 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import DashboardPage from "./components/dashboard/DashboardPage";
 import AdminPanelWrapper from "./components/dashboard/AdminPanelWrapper";
 import WidgetBuilder from "./components/dashboard/WidgetBuilder";
-import AIProviderSetup from "./components/dashboard/AIProviderSetup";
 import AnalyticsDashboard from "./components/dashboard/AnalyticsDashboard";
 import AIModelManagement from "./components/dashboard/AIModelManagement";
 import WidgetList from "./components/dashboard/WidgetList";
@@ -107,17 +106,17 @@ function App() {
           }
         />
         <Route
-          path="/ai-providers"
+          path="/ai-models"
           element={
             <ProtectedRoute>
-              <AdminPanelWrapper title="AI Provider Setup">
-                <AIProviderSetup />
+              <AdminPanelWrapper title="AI Model Management">
+                <AIModelManagement />
               </AdminPanelWrapper>
             </ProtectedRoute>
           }
         />
         <Route
-          path="/ai-models"
+          path="/ai-providers"
           element={
             <ProtectedRoute>
               <AdminPanelWrapper title="AI Model Management">

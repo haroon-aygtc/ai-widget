@@ -1,7 +1,6 @@
 import { RouteObject } from "react-router-dom";
 import Home from "@/components/home";
 import WidgetBuilder from "@/components/dashboard/WidgetBuilder";
-import AIProviderSetup from "@/components/dashboard/AIProviderSetup";
 import AnalyticsDashboard from "@/components/dashboard/AnalyticsDashboard";
 import DashboardPage from "@/components/dashboard/DashboardPage";
 import AdminPanelWrapper from "@/components/dashboard/AdminPanelWrapper";
@@ -65,17 +64,17 @@ const routes: RouteObject[] = [
     ),
   },
   {
-    path: "/ai-providers",
+    path: "/ai-models",
     element: (
       <ProtectedRoute>
-        <AdminPanelWrapper title="AI Provider Setup">
-          <AIProviderSetup />
+        <AdminPanelWrapper title="AI Model Management">
+          <AIModelManagement />
         </AdminPanelWrapper>
       </ProtectedRoute>
     ),
   },
   {
-    path: "/ai-models",
+    path: "/ai-providers",
     element: (
       <ProtectedRoute>
         <AdminPanelWrapper title="AI Model Management">

@@ -118,19 +118,35 @@ class AIProviderController extends Controller
                 'max_tokens' => 'nullable|integer'
             ]);
 
+            // Clean the API key - remove any "Bearer " prefix if accidentally included
+            $apiKey = trim(preg_replace('/^Bearer\s+/i', '', $validated['api_key']));
+
             // Create a temporary provider instance for testing
             $tempProvider = new AIProvider([
                 'provider_type' => $validated['provider_type'],
-                'api_key' => $validated['api_key'],
-                'model' => $validated['model'] ?? $this->getDefaultModel($validated['provider_type']),
+                'api_key' => $apiKey,
+                'model' => $validated['model'] ?? 'temp',
                 'temperature' => $validated['temperature'] ?? 0.7,
                 'max_tokens' => $validated['max_tokens'] ?? 2048,
                 'system_prompt' => 'You are a helpful assistant.',
                 'advanced_settings' => $this->getDefaultAdvancedSettings($validated['provider_type'])
             ]);
 
+            \Log::info('Testing connection for provider', [
+                'provider_type' => $validated['provider_type'],
+                'model' => $tempProvider->model,
+                'api_key_length' => strlen($apiKey),
+                'api_key_starts_with' => substr($apiKey, 0, 5) . '...'
+            ]);
+
             $service = AIServiceFactory::create($tempProvider);
             $result = $service->testConnection([]);
+
+            \Log::info('Connection test result', [
+                'success' => $result['success'],
+                'message' => $result['message'] ?? 'No message',
+                'provider_type' => $validated['provider_type']
+            ]);
 
             return response()->json([
                 'success' => $result['success'],
@@ -138,20 +154,47 @@ class AIProviderController extends Controller
                 'message' => $result['message'] ?? ($result['success'] ? 'Connection successful' : 'Connection failed')
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
+            \Log::error('Validation failed for connection test', [
+                'errors' => $e->errors(),
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
                 'errors' => $e->errors()
             ], 422);
         } catch (\Exception $e) {
-            Log::error('Connection test failed', [
+            \Log::error('Connection test failed', [
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
                 'provider_type' => $request->input('provider_type')
             ]);
 
+            $errorMessage = $e->getMessage();
+            $providerSpecificMessage = '';
+
+            // Add provider-specific error messages
+            if ($request->input('provider_type') === 'claude' &&
+                (strpos($errorMessage, 'invalid x-api-key') !== false ||
+                 strpos($errorMessage, 'authentication') !== false)) {
+                $providerSpecificMessage = 'Invalid API key format for Claude. Please ensure you\'re using the correct key from your Anthropic account.';
+            } elseif ($request->input('provider_type') === 'openai' &&
+                      strpos($errorMessage, '401') !== false) {
+                $providerSpecificMessage = 'Invalid API key for OpenAI. Please check your API key.';
+            } elseif ($request->input('provider_type') === 'groq' &&
+                      strpos($errorMessage, 'invalid_api_key') !== false) {
+                $providerSpecificMessage = 'Invalid API key for Groq. Please make sure you\'re using a valid API key (should start with "gsk_").';
+            }
+
+            // Append provider specific message if we have one
+            $finalMessage = 'Connection test failed: ' . $e->getMessage();
+            if (!empty($providerSpecificMessage)) {
+                $finalMessage .= ' - ' . $providerSpecificMessage;
+            }
+
             return response()->json([
                 'success' => false,
-                'message' => 'Connection test failed: ' . $e->getMessage()
+                'message' => $finalMessage
             ], 400);
         }
     }
@@ -159,29 +202,37 @@ class AIProviderController extends Controller
     /**
      * Get available models for a provider
      */
-    public function getModels(string $providerType): JsonResponse
+    public function getModels(Request $request): JsonResponse
     {
         try {
-            $availableProviders = AIServiceFactory::getAvailableProviders();
+            $validated = $request->validate([
+                'provider_type' => 'required|string',
+                'api_key' => 'required|string'
+            ]);
 
-            if (!isset($availableProviders[$providerType])) {
+            $result = AIServiceFactory::getAvailableModels(
+                $validated['provider_type'],
+                $validated['api_key']
+            );
+
+            if (!$result['success']) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Provider not found'
-                ], 404);
+                    'message' => $result['message']
+                ], 400);
             }
 
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'provider' => $providerType,
-                    'models' => $availableProviders[$providerType]['models']
+                    'provider' => $validated['provider_type'],
+                    'models' => $result['models']
                 ]
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to get models for provider', [
                 'error' => $e->getMessage(),
-                'provider_type' => $providerType
+                'provider_type' => $request->input('provider_type')
             ]);
 
             return response()->json([
@@ -242,24 +293,7 @@ class AIProviderController extends Controller
         }
     }
 
-    /**
-     * Get default model for a provider type
-     */
-    private function getDefaultModel(string $type): string
-    {
-        return match ($type) {
-            'openai' => 'gpt-4o',
-            'claude' => 'claude-3-sonnet-20240229',
-            'gemini' => 'gemini-1.5-pro',
-            'mistral' => 'mistral-large-latest',
-            'groq' => 'llama3-70b-8192',
-            'deepseek' => 'deepseek-chat',
-            'huggingface' => 'meta-llama/Llama-2-70b-chat-hf',
-            'grok' => 'grok-1',
-            'openrouter' => 'openai/gpt-4o',
-            default => 'gpt-4o'
-        };
-    }
+
 
     /**
      * Get default advanced settings for a provider type

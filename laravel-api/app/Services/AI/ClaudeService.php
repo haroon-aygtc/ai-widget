@@ -32,7 +32,7 @@ class ClaudeService
 
         try {
             // Use provider configuration
-            $apiKey = $this->provider->api_key;
+            $apiKey = $this->provider->getRawApiKey();
             $model = $this->provider->model;
             $temperature = $this->provider->temperature;
             $maxTokens = $this->provider->max_tokens;
@@ -43,6 +43,14 @@ class ClaudeService
 
             if (!$apiKey) {
                 throw new \Exception('Claude API key is required');
+            }
+
+            // Validate API key format - Claude API keys typically start with "sk-ant-"
+            if (!preg_match('/^(sk-ant-|sk-|key-)/i', $apiKey)) {
+                \Log::warning('Claude API key may be invalid - does not match expected format', [
+                    'key_prefix' => substr($apiKey, 0, 4),
+                    'key_length' => strlen($apiKey)
+                ]);
             }
 
             // Build messages array with context
@@ -78,6 +86,13 @@ class ClaudeService
                 $payload['system'] = $systemPrompt;
             }
 
+            \Log::debug('Claude API request', [
+                'model' => $model,
+                'messages_count' => count($messages),
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 5) . '...'
+            ]);
+
             $response = Http::timeout(30)
                 ->withHeaders([
                     'x-api-key' => $apiKey,
@@ -87,12 +102,19 @@ class ClaudeService
                 ->post($this->baseUrl . '/messages', $payload);
 
             if (!$response->successful()) {
+                \Log::error('Claude API error response', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
                 throw new \Exception('Claude API error: ' . $response->body());
             }
 
             $data = $response->json();
 
             if (!isset($data['content'][0]['text'])) {
+                \Log::error('Invalid response format from Claude API', [
+                    'response' => $data
+                ]);
                 throw new \Exception('Invalid response format from Claude API');
             }
 
@@ -138,16 +160,51 @@ class ClaudeService
     public function testConnection(array $config): array
     {
         try {
-            $result = $this->generateResponse('Hello, this is a test message.', []);
+            // Simple validation of API key format
+            $apiKey = $this->provider->getRawApiKey();
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'provider' => 'claude'
+                ];
+            }
+
+            \Log::info('Testing Claude API connection', [
+                'model' => $this->provider->model,
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 5) . '...'
+            ]);
+
+            // Make a simple test request
+            $testMessage = 'Hello, this is a test message. Please respond with "Connection successful!"';
+            $result = $this->generateResponse($testMessage, []);
+
+            if (!$result['success']) {
+                return [
+                    'success' => false,
+                    'message' => $result['message'] ?? 'Connection failed',
+                    'provider' => 'claude',
+                    'model' => $this->provider->model,
+                    'details' => $result
+                ];
+            }
 
             return [
-                'success' => $result['success'],
-                'message' => $result['success'] ? 'Connection successful' : $result['message'],
+                'success' => true,
+                'message' => 'Connection successful',
                 'provider' => 'claude',
                 'model' => $this->provider->model,
-                'response_time' => $result['response_time'] ?? null
+                'response_time' => $result['response_time'] ?? null,
+                'response_content' => substr($result['content'] ?? '', 0, 50) . '...'
             ];
         } catch (\Exception $e) {
+            \Log::error('Claude API connection test failed', [
+                'error' => $e->getMessage(),
+                'model' => $this->provider->model
+            ]);
+
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -168,7 +225,7 @@ class ClaudeService
         return response()->stream(function () use ($message, $context) {
             try {
                 // Use provider configuration
-                $apiKey = $this->provider->api_key;
+                $apiKey = $this->provider->getRawApiKey();
                 $model = $this->provider->model;
                 $temperature = $this->provider->temperature;
                 $maxTokens = $this->provider->max_tokens;
@@ -251,17 +308,62 @@ class ClaudeService
     }
 
     /**
-     * Get available models.
+     * Get available models from Claude API
      *
      * @return array
      */
     public function getAvailableModels(): array
     {
-        return [
-            'claude-3-haiku-20240307' => 'Claude 3 Haiku',
-            'claude-3-sonnet-20240229' => 'Claude 3 Sonnet',
-            'claude-3-opus-20240229' => 'Claude 3 Opus',
-            'claude-3-5-sonnet-20241022' => 'Claude 3.5 Sonnet',
-        ];
+        try {
+            $apiKey = $this->provider->decrypted_api_key;
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'models' => []
+                ];
+            }
+
+            // Claude doesn't have a models endpoint, return known models
+            $models = [
+                [
+                    'id' => 'claude-3-5-sonnet-20241022',
+                    'name' => 'Claude 3.5 Sonnet',
+                    'description' => 'Most intelligent model'
+                ],
+                [
+                    'id' => 'claude-3-5-haiku-20241022',
+                    'name' => 'Claude 3.5 Haiku',
+                    'description' => 'Fastest model'
+                ],
+                [
+                    'id' => 'claude-3-opus-20240229',
+                    'name' => 'Claude 3 Opus',
+                    'description' => 'Powerful model for highly complex tasks'
+                ],
+                [
+                    'id' => 'claude-3-sonnet-20240229',
+                    'name' => 'Claude 3 Sonnet',
+                    'description' => 'Balance of intelligence and speed'
+                ],
+                [
+                    'id' => 'claude-3-haiku-20240307',
+                    'name' => 'Claude 3 Haiku',
+                    'description' => 'Fast and cost-effective'
+                ]
+            ];
+
+            return [
+                'success' => true,
+                'models' => $models
+            ];
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'models' => []
+            ];
+        }
     }
 }

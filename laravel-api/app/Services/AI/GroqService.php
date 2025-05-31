@@ -27,7 +27,7 @@ class GroqService
     public function generateResponse(string $message, array $context = [])
     {
         // Use provider configuration
-        $apiKey = $this->provider->api_key;
+        $apiKey = $this->provider->decrypted_api_key;
         $model = $this->provider->model;
         $temperature = $this->provider->temperature;
         $maxTokens = $this->provider->max_tokens;
@@ -35,6 +35,14 @@ class GroqService
 
         if (!$apiKey) {
             throw new \Exception('Groq API key is required');
+        }
+
+        // Validate API key format - Groq API keys typically start with "gsk_"
+        if (!preg_match('/^gsk_/i', $apiKey)) {
+            \Log::warning('Groq API key may be invalid - does not match expected format', [
+                'key_prefix' => substr($apiKey, 0, 4),
+                'key_length' => strlen($apiKey)
+            ]);
         }
 
         // Build messages array with context
@@ -55,6 +63,13 @@ class GroqService
         // Add current message
         $messages[] = ['role' => 'user', 'content' => $message];
 
+        \Log::debug('Groq API request', [
+            'model' => $model,
+            'messages_count' => count($messages),
+            'api_key_length' => strlen($apiKey),
+            'api_key_prefix' => substr($apiKey, 0, 4) . '...'
+        ]);
+
         try {
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $apiKey,
@@ -72,6 +87,12 @@ class GroqService
             if ($response->successful()) {
                 $data = $response->json();
 
+                \Log::debug('Groq API successful response', [
+                    'model' => $data['model'] ?? $model,
+                    'usage' => $data['usage'] ?? [],
+                    'response_length' => strlen($data['choices'][0]['message']['content'] ?? '')
+                ]);
+
                 return [
                     'success' => true,
                     'content' => $data['choices'][0]['message']['content'] ?? '',
@@ -87,16 +108,37 @@ class GroqService
                     'provider_id' => $this->provider->id
                 ];
             } else {
+                $errorData = $response->json();
+                $errorMessage = $errorData['error']['message'] ?? 'Unknown error';
+                $errorType = $errorData['error']['type'] ?? '';
+                $errorCode = $errorData['error']['code'] ?? '';
+
+                \Log::error('Groq API error response', [
+                    'status' => $response->status(),
+                    'error_type' => $errorType,
+                    'error_code' => $errorCode,
+                    'error_message' => $errorMessage,
+                    'response' => $response->body()
+                ]);
+
                 return [
                     'success' => false,
-                    'error' => $response->json()['error']['message'] ?? 'Unknown error',
+                    'error' => $errorMessage,
+                    'error_type' => $errorType,
+                    'error_code' => $errorCode,
                     'status' => $response->status(),
                     'provider' => 'groq',
                     'provider_id' => $this->provider->id
                 ];
             }
         } catch (RequestException $e) {
-            throw new \Exception('Groq API error: ' . $e->getMessage());
+            $errorMessage = 'Groq API error: ' . $e->getMessage();
+            \Log::error($errorMessage, [
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw new \Exception($errorMessage);
         }
     }
 
@@ -110,7 +152,7 @@ class GroqService
     public function streamResponse(string $message, array $context = [])
     {
         // Use provider configuration
-        $apiKey = $this->provider->api_key;
+        $apiKey = $this->provider->decrypted_api_key;
         $model = $this->provider->model;
         $temperature = $this->provider->temperature;
         $maxTokens = $this->provider->max_tokens;
@@ -186,19 +228,137 @@ class GroqService
     public function testConnection(array $config): array
     {
         try {
-            $result = $this->generateResponse('Hello, this is a test message.', []);
+            // Simple validation of API key format
+            $apiKey = $this->provider->decrypted_api_key;
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'provider' => 'groq'
+                ];
+            }
+
+            // Validate API key format - Groq API keys typically start with "gsk_"
+            if (!preg_match('/^gsk_/i', $apiKey)) {
+                \Log::warning('Groq API key may be invalid - does not match expected format', [
+                    'key_prefix' => substr($apiKey, 0, 4),
+                    'key_length' => strlen($apiKey)
+                ]);
+            }
+
+            \Log::info('Testing Groq API connection', [
+                'model' => $this->provider->model,
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 4) . '...'
+            ]);
+
+            // Make a simple test request
+            $testMessage = 'Hello, this is a test message. Please respond with "Connection successful!"';
+            $result = $this->generateResponse($testMessage, []);
+
+            if (!$result['success']) {
+                $errorMessage = $result['error'] ?? 'Connection failed';
+
+                // Provide more helpful error messages
+                if (isset($result['error_code']) && $result['error_code'] === 'invalid_api_key') {
+                    $errorMessage = 'Invalid API key. Please make sure you are using a valid Groq API key (starts with "gsk_")';
+                } elseif (isset($result['status']) && $result['status'] === 401) {
+                    $errorMessage = 'Authentication failed. Please check your API key';
+                }
+
+                return [
+                    'success' => false,
+                    'message' => $errorMessage,
+                    'provider' => 'groq',
+                    'model' => $this->provider->model,
+                    'details' => $result
+                ];
+            }
 
             return [
-                'success' => $result['success'],
-                'message' => $result['success'] ? 'Connection successful' : ($result['error'] ?? 'Connection failed'),
+                'success' => true,
+                'message' => 'Connection successful',
                 'provider' => 'groq',
-                'model' => $this->provider->model
+                'model' => $this->provider->model,
+                'response_content' => substr($result['content'] ?? '', 0, 50) . '...'
             ];
+        } catch (\Exception $e) {
+            \Log::error('Groq API connection test failed', [
+                'error' => $e->getMessage(),
+                'model' => $this->provider->model
+            ]);
+
+            $errorMessage = $e->getMessage();
+
+            // Improve error message for common issues
+            if (stripos($errorMessage, 'invalid_api_key') !== false) {
+                $errorMessage = 'Invalid API key. Please make sure you are using a valid Groq API key (starts with "gsk_")';
+            } elseif (stripos($errorMessage, '401') !== false || stripos($errorMessage, 'unauthorized') !== false) {
+                $errorMessage = 'Authentication failed. Please check your API key';
+            }
+
+            return [
+                'success' => false,
+                'message' => $errorMessage,
+                'provider' => 'groq'
+            ];
+        }
+    }
+
+    /**
+     * Get available models from Groq API
+     *
+     * @return array
+     */
+    public function getAvailableModels(): array
+    {
+        try {
+            $apiKey = $this->provider->decrypted_api_key;
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'models' => []
+                ];
+            }
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(10)
+            ->get($this->apiUrl . '/models');
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $models = [];
+
+                foreach ($data['data'] as $model) {
+                    $models[] = [
+                        'id' => $model['id'],
+                        'name' => $model['id'],
+                        'description' => 'Groq model'
+                    ];
+                }
+
+                return [
+                    'success' => true,
+                    'models' => $models
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to fetch models',
+                    'models' => []
+                ];
+            }
         } catch (\Exception $e) {
             return [
                 'success' => false,
-                'message' => 'Connection error: ' . $e->getMessage(),
-                'provider' => 'groq'
+                'message' => $e->getMessage(),
+                'models' => []
             ];
         }
     }

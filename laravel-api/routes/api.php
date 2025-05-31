@@ -42,12 +42,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('api-discovery', [ApiTestingController::class, 'discoverEndpoints']);
     Route::post('api-execute', [ApiTestingController::class, 'executeRequest']);
 
+    // Admin Provider Template Management
+    Route::prefix('admin/providers')->group(function () {
+        Route::get('templates', [\App\Http\Controllers\Admin\ProviderManagementController::class, 'getProviderTemplates']);
+        Route::get('templates/defaults', [\App\Http\Controllers\Admin\ProviderManagementController::class, 'getDefaultTemplates']);
+        Route::post('templates', [\App\Http\Controllers\Admin\ProviderManagementController::class, 'updateProviderTemplates']);
+        Route::post('templates/reset', [\App\Http\Controllers\Admin\ProviderManagementController::class, 'resetProviderTemplates']);
+        Route::post('templates/add', [\App\Http\Controllers\Admin\ProviderManagementController::class, 'addProviderTemplate']);
+        Route::delete('templates/{providerType}', [\App\Http\Controllers\Admin\ProviderManagementController::class, 'removeProviderTemplate']);
+        Route::get('templates/export', [\App\Http\Controllers\Admin\ProviderManagementController::class, 'exportTemplates']);
+        Route::post('templates/import', [\App\Http\Controllers\Admin\ProviderManagementController::class, 'importTemplates']);
+    });
+
     // AI Provider Management routes
     Route::prefix('ai-providers')->group(function () {
         Route::get('/', [AIProviderController::class, 'index']);
         Route::post('/', [AIProviderController::class, 'store']);
         Route::post('/test-connection', [AIProviderController::class, 'testConnection']);
-        Route::get('/{providerType}/models', [AIProviderController::class, 'getModels']);
+        Route::post('/models', [AIProviderController::class, 'getModels']);
         Route::patch('/{provider}/toggle-status', [AIProviderController::class, 'toggleStatus']);
         Route::delete('/{provider}', [AIProviderController::class, 'destroy']);
     });

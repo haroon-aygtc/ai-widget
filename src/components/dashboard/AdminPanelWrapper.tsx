@@ -113,16 +113,10 @@ const AdminPanelWrapper: React.FC<AdminPanelWrapperProps> = ({
       description: "Manage your widgets",
     },
     {
-      path: "/ai-providers",
-      label: "AI Providers",
-      icon: <Sparkles className="h-5 w-5" />,
-      description: "Connect AI services",
-    },
-    {
       path: "/ai-models",
-      label: "AI Models",
-      icon: <Zap className="h-5 w-5" />,
-      description: "Configure AI models",
+      label: "AI Management",
+      icon: <Sparkles className="h-5 w-5" />,
+      description: "Manage AI providers and models",
     },
     {
       path: "/analytics",
@@ -224,11 +218,10 @@ const AdminPanelWrapper: React.FC<AdminPanelWrapperProps> = ({
                           navigate(item.path);
                           setMobileMenuOpen(false);
                         }}
-                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-all duration-200 group 
-                          ${
-                            isActive
-                              ? "bg-primary text-primary-foreground shadow-md"
-                              : "hover:bg-accent hover:text-accent-foreground"
+                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-all duration-200 group
+                          ${isActive
+                            ? "bg-primary text-primary-foreground shadow-md"
+                            : "hover:bg-accent hover:text-accent-foreground"
                           } ${sidebarCollapsed ? "justify-center" : ""}`}
                       >
                         <div
@@ -242,11 +235,10 @@ const AdminPanelWrapper: React.FC<AdminPanelWrapperProps> = ({
                               {item.label}
                             </div>
                             <div
-                              className={`text-xs truncate ${
-                                isActive
-                                  ? "text-primary-foreground/80"
-                                  : "text-muted-foreground"
-                              }`}
+                              className={`text-xs truncate ${isActive
+                                ? "text-primary-foreground/80"
+                                : "text-muted-foreground"
+                                }`}
                             >
                               {item.description}
                             </div>
@@ -427,11 +419,10 @@ const AdminPanelWrapper: React.FC<AdminPanelWrapperProps> = ({
                     )}
                     <button
                       onClick={() => navigate(crumb.path)}
-                      className={`hover:text-primary transition-colors ${
-                        index === getBreadcrumbs().length - 1
-                          ? "text-foreground font-medium"
-                          : "text-muted-foreground"
-                      }`}
+                      className={`hover:text-primary transition-colors ${index === getBreadcrumbs().length - 1
+                        ? "text-foreground font-medium"
+                        : "text-muted-foreground"
+                        }`}
                     >
                       {crumb.label}
                     </button>
@@ -545,11 +536,11 @@ const AdminPanelWrapper: React.FC<AdminPanelWrapperProps> = ({
                     New Widget
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() => navigate("/ai-providers")}
+                    onClick={() => navigate("/ai-models")}
                     className="cursor-pointer"
                   >
                     <Sparkles className="mr-2 h-4 w-4" />
-                    Add AI Provider
+                    Manage AI Models
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => navigate("/users")}

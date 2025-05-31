@@ -32,7 +32,7 @@ class GeminiService
 
         try {
             // Use provider configuration
-            $apiKey = $this->provider->api_key;
+            $apiKey = $this->provider->getRawApiKey();
             $model = $this->provider->model;
             $temperature = $this->provider->temperature;
             $maxTokens = $this->provider->max_tokens;
@@ -122,19 +122,60 @@ class GeminiService
     public function testConnection(array $config): array
     {
         try {
+            $apiKey = $this->provider->getRawApiKey();
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'provider' => 'gemini'
+                ];
+            }
+
+            \Log::info('Testing Gemini API connection', [
+                'model' => $this->provider->model,
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 6) . '...'
+            ]);
+
             $result = $this->generateResponse('Hello, this is a test message.', []);
 
+            if (!$result['success']) {
+                $errorMessage = $result['message'] ?? 'Connection failed';
+
+                return [
+                    'success' => false,
+                    'message' => $errorMessage,
+                    'provider' => 'gemini',
+                    'model' => $this->provider->model,
+                    'details' => $result
+                ];
+            }
+
             return [
-                'success' => $result['success'],
-                'message' => $result['success'] ? 'Connection successful' : $result['message'],
+                'success' => true,
+                'message' => 'Connection successful',
                 'provider' => 'gemini',
                 'model' => $this->provider->model,
-                'response_time' => $result['response_time'] ?? null
+                'response_time' => $result['response_time'] ?? null,
+                'response_content' => substr($result['content'] ?? '', 0, 50) . '...'
             ];
         } catch (\Exception $e) {
+            \Log::error('Gemini API connection test failed', [
+                'error' => $e->getMessage(),
+                'model' => $this->provider->model
+            ]);
+
+            $errorMessage = $e->getMessage();
+
+            // Improve error message for common issues
+            if (stripos($errorMessage, '401') !== false || stripos($errorMessage, 'unauthorized') !== false) {
+                $errorMessage = 'Authentication failed. Please check your Gemini API key';
+            }
+
             return [
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => 'Connection error: ' . $errorMessage,
                 'provider' => 'gemini'
             ];
         }
@@ -204,16 +245,55 @@ class GeminiService
     }
 
     /**
-     * Get available models.
+     * Get available models from Gemini API
      *
      * @return array
      */
     public function getAvailableModels(): array
     {
-        return [
-            'gemini-1.5-flash' => 'Gemini 1.5 Flash',
-            'gemini-1.5-pro' => 'Gemini 1.5 Pro',
-            'gemini-1.0-pro' => 'Gemini 1.0 Pro',
-        ];
+        try {
+            $apiKey = $this->provider->decrypted_api_key;
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'models' => []
+                ];
+            }
+
+            $response = Http::timeout(10)
+                ->get($this->baseUrl . '/models?key=' . $apiKey);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $models = [];
+
+                foreach ($data['models'] as $model) {
+                    $models[] = [
+                        'id' => str_replace('models/', '', $model['name']),
+                        'name' => str_replace('models/', '', $model['name']),
+                        'description' => $model['description'] ?? 'Gemini model'
+                    ];
+                }
+
+                return [
+                    'success' => true,
+                    'models' => $models
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to fetch models',
+                    'models' => []
+                ];
+            }
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'models' => []
+            ];
+        }
     }
 }

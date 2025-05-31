@@ -27,7 +27,7 @@ class OpenRouterService
     public function generateResponse(string $message, array $context = [])
     {
         // Use provider configuration
-        $apiKey = $this->provider->api_key;
+        $apiKey = $this->provider->decrypted_api_key;
         $model = $this->provider->model;
         $temperature = $this->provider->temperature;
         $maxTokens = $this->provider->max_tokens;
@@ -55,12 +55,19 @@ class OpenRouterService
         // Add current message
         $messages[] = ['role' => 'user', 'content' => $message];
 
+        \Log::debug('OpenRouter API request', [
+            'model' => $model,
+            'messages_count' => count($messages),
+            'api_key_length' => strlen($apiKey),
+            'api_key_prefix' => substr($apiKey, 0, 6) . '...'
+        ]);
+
         try {
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $apiKey,
                 'Content-Type' => 'application/json',
-                'HTTP-Referer' => config('app.url'), // Required by OpenRouter
-                'X-Title' => config('app.name') // Required by OpenRouter
+                'HTTP-Referer' => config('app.url', 'http://localhost'), // Required by OpenRouter
+                'X-Title' => config('app.name', 'AI Widget') // Required by OpenRouter
             ])
             ->timeout(60)
             ->retry(3, 1000)
@@ -89,9 +96,18 @@ class OpenRouterService
                     'provider_id' => $this->provider->id
                 ];
             } else {
+                $errorData = $response->json();
+                $errorMessage = $errorData['error']['message'] ?? 'Unknown error';
+
+                \Log::error('OpenRouter API error response', [
+                    'status' => $response->status(),
+                    'error_message' => $errorMessage,
+                    'response' => $response->body()
+                ]);
+
                 return [
                     'success' => false,
-                    'error' => $response->json()['error']['message'] ?? 'Unknown error',
+                    'error' => $errorMessage,
                     'status' => $response->status(),
                     'provider' => 'openrouter',
                     'provider_id' => $this->provider->id
@@ -111,19 +127,124 @@ class OpenRouterService
     public function testConnection(array $config): array
     {
         try {
+            $apiKey = $this->provider->decrypted_api_key;
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'provider' => 'openrouter'
+                ];
+            }
+
+            \Log::info('Testing OpenRouter API connection', [
+                'model' => $this->provider->model,
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 6) . '...'
+            ]);
+
             $result = $this->generateResponse('Hello, this is a test message.', []);
 
+            if (!$result['success']) {
+                $errorMessage = $result['error'] ?? 'Connection failed';
+
+                // Provide more helpful error messages
+                if (isset($result['status']) && $result['status'] === 401) {
+                    $errorMessage = 'Authentication failed. Please check your OpenRouter API key';
+                }
+
+                return [
+                    'success' => false,
+                    'message' => $errorMessage,
+                    'provider' => 'openrouter',
+                    'model' => $this->provider->model,
+                    'details' => $result
+                ];
+            }
+
             return [
-                'success' => $result['success'],
-                'message' => $result['success'] ? 'Connection successful' : ($result['error'] ?? 'Connection failed'),
+                'success' => true,
+                'message' => 'Connection successful',
                 'provider' => 'openrouter',
-                'model' => $this->provider->model
+                'model' => $this->provider->model,
+                'response_content' => substr($result['content'] ?? '', 0, 50) . '...'
             ];
+        } catch (\Exception $e) {
+            \Log::error('OpenRouter API connection test failed', [
+                'error' => $e->getMessage(),
+                'model' => $this->provider->model
+            ]);
+
+            $errorMessage = $e->getMessage();
+
+            // Improve error message for common issues
+            if (stripos($errorMessage, '401') !== false || stripos($errorMessage, 'unauthorized') !== false) {
+                $errorMessage = 'Authentication failed. Please check your OpenRouter API key';
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Connection error: ' . $errorMessage,
+                'provider' => 'openrouter'
+            ];
+        }
+    }
+
+    /**
+     * Get available models from OpenRouter API
+     *
+     * @return array
+     */
+    public function getAvailableModels(): array
+    {
+        try {
+            $apiKey = $this->provider->decrypted_api_key;
+
+            if (!$apiKey) {
+                return [
+                    'success' => false,
+                    'message' => 'API key is required',
+                    'models' => []
+                ];
+            }
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json',
+                'HTTP-Referer' => config('app.url', 'http://localhost'),
+                'X-Title' => config('app.name', 'AI Widget')
+            ])
+            ->timeout(10)
+            ->get($this->apiUrl . '/models');
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $models = [];
+
+                foreach ($data['data'] as $model) {
+                    $models[] = [
+                        'id' => $model['id'],
+                        'name' => $model['id'],
+                        'description' => 'OpenRouter model'
+                    ];
+                }
+
+                return [
+                    'success' => true,
+                    'models' => $models
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to fetch models',
+                    'models' => []
+                ];
+            }
         } catch (\Exception $e) {
             return [
                 'success' => false,
-                'message' => 'Connection error: ' . $e->getMessage(),
-                'provider' => 'openrouter'
+                'message' => $e->getMessage(),
+                'models' => []
             ];
         }
     }

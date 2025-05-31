@@ -186,10 +186,10 @@ const DashboardPage: React.FC = () => {
           <Button
             className="h-auto py-4 flex flex-col items-center justify-center gap-2"
             variant="outline"
-            onClick={() => navigate("/ai-providers")}
+            onClick={() => navigate("/ai-models")}
           >
             <Sparkles className="h-6 w-6" />
-            <span>Connect AI Provider</span>
+            <span>Manage AI Models</span>
           </Button>
           <Button
             className="h-auto py-4 flex flex-col items-center justify-center gap-2"

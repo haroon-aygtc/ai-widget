@@ -67,9 +67,28 @@ class AIProvider extends Model
         try {
             return \Illuminate\Support\Facades\Crypt::decryptString($this->api_key);
         } catch (\Exception $e) {
-            // If decryption fails, assume it's already decrypted (for backward compatibility)
+            // If decryption fails, assume it's already decrypted (for backward compatibility or testing)
             return $this->api_key;
         }
+    }
+
+    /**
+     * Get the raw API key for testing purposes.
+     * This method handles both encrypted and plain text keys.
+     */
+    public function getRawApiKey(): ?string
+    {
+        if (empty($this->attributes['api_key'])) {
+            return null;
+        }
+
+        // If this is a temporary instance (not saved to database), return the raw value
+        if (!$this->exists) {
+            return $this->attributes['api_key'];
+        }
+
+        // For saved instances, use the decrypted accessor
+        return $this->decrypted_api_key;
     }
 
     /**
