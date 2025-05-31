@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('a_i_providers', function (Blueprint $table) {
+        Schema::create('ai_providers', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('provider_type'); // openai, gemini, claude, mistral, etc.
@@ -31,6 +31,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('a_i_providers');
+        Schema::dropIfExists('ai_providers');
     }
 };
