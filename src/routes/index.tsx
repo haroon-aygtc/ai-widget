@@ -11,6 +11,9 @@ import ProfilePage from "@/pages/ProfilePage";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import WidgetPage from "@/pages/WidgetPage";
 import AIModelManagement from "@/components/dashboard/AIModelManagement";
+import WidgetList from "@/components/dashboard/WidgetList";
+import UserManagement from "@/components/dashboard/UserManagement";
+import Settings from "@/components/dashboard/Settings";
 
 const routes: RouteObject[] = [
   {
@@ -92,11 +95,21 @@ const routes: RouteObject[] = [
     ),
   },
   {
+    path: "/widgets",
+    element: (
+      <ProtectedRoute>
+        <AdminPanelWrapper title="Widget List">
+          <WidgetList />
+        </AdminPanelWrapper>
+      </ProtectedRoute>
+    ),
+  },
+  {
     path: "/users",
     element: (
       <ProtectedRoute requireAdmin={true}>
         <AdminPanelWrapper title="User Management">
-          <div className="p-6">User Management Content</div>
+          <UserManagement />
         </AdminPanelWrapper>
       </ProtectedRoute>
     ),
@@ -106,7 +119,7 @@ const routes: RouteObject[] = [
     element: (
       <ProtectedRoute>
         <AdminPanelWrapper title="Settings">
-          <div className="p-6">Settings Content</div>
+          <Settings />
         </AdminPanelWrapper>
       </ProtectedRoute>
     ),

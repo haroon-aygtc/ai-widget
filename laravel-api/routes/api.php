@@ -34,6 +34,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('ai-providers/generate-response', [AIProviderController::class, 'generateResponse']);
     Route::get('ai-providers/available', [AIProviderController::class, 'getAvailableProviders']);
 
+    // AI Model routes
+    Route::apiResource('ai-models', AIModelController::class);
+    Route::post('ai-models/fetch-available', [AIModelController::class, 'fetchAvailableModels']);
+    Route::post('ai-models/test-model', [AIModelController::class, 'testModel']);
+    Route::patch('ai-models/{id}/toggle-active', [AIModelController::class, 'toggleActive']);
+    Route::patch('ai-models/{id}/toggle-featured', [AIModelController::class, 'toggleFeatured']);
+
     // Widget routes
     Route::apiResource('widgets', WidgetController::class);
     Route::post('widgets/{widget}/generate-embed-code', [WidgetController::class, 'generateEmbedCode']);

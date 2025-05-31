@@ -42,10 +42,11 @@ class AIService
      * @param string $message
      * @param array $config
      * @param bool $stream Whether to stream the response
+     * @param array $context Conversation context
      * @return array|\Illuminate\Http\StreamedResponse
      * @throws \Exception
      */
-    public function processMessage(string $provider, string $message, array $config = [], bool $stream = false)
+    public function processMessage(string $provider, string $message, array $config = [], bool $stream = false, array $context = [])
     {
         try {
             $providerService = $this->getProvider($provider);

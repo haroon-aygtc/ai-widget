@@ -50,6 +50,11 @@ const AdminPanelWrapper: React.FC<AdminPanelWrapperProps> = ({
       icon: <MessageSquare className="h-5 w-5" />,
     },
     {
+      path: "/widgets",
+      label: "Widget List",
+      icon: <MessageSquare className="h-5 w-5" />,
+    },
+    {
       path: "/ai-providers",
       label: "AI Providers",
       icon: <Sparkles className="h-5 w-5" />,
