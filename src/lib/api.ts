@@ -23,35 +23,81 @@ api.interceptors.request.use(
   },
 );
 
+interface AIProviderData {
+  provider_type?: string;
+  api_key?: string;
+  model?: string;
+  temperature?: number;
+  max_tokens?: number;
+  system_prompt?: string;
+  advanced_settings?: Record<string, any>;
+  is_active?: boolean;
+}
+
+interface TestConnectionData {
+  provider: string;
+  apiKey: string;
+}
+
+interface GenerateResponseData {
+  provider: string;
+  message: string;
+  apiKey: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  systemPrompt?: string;
+  stream?: boolean;
+  advancedSettings?: Record<string, any>;
+}
+
 // AI Provider API
 export const aiProviderApi = {
   getAll: () => api.get("/ai-providers"),
   getById: (id: string) => api.get(`/ai-providers/${id}`),
-  create: (data: any) => api.post("/ai-providers", data),
-  update: (id: string, data: any) => api.put(`/ai-providers/${id}`, data),
+  create: (data: AIProviderData) => api.post("/ai-providers", data),
+  update: (id: string, data: AIProviderData) =>
+    api.put(`/ai-providers/${id}`, data),
   delete: (id: string) => api.delete(`/ai-providers/${id}`),
-  testConnection: (data: any) =>
+  testConnection: (data: TestConnectionData) =>
     api.post("/ai-providers/test-connection", data),
-  generateResponse: (data: any) =>
+  generateResponse: (data: GenerateResponseData) =>
     api.post("/ai-providers/generate-response", data),
+  getAvailableProviders: () => api.get("/ai-providers/available"),
 };
+
+interface WidgetData {
+  name?: string;
+  description?: string;
+  ai_provider_id?: string;
+  theme?: Record<string, any>;
+  settings?: Record<string, any>;
+  is_active?: boolean;
+}
 
 // Widget API
 export const widgetApi = {
   getAll: () => api.get("/widgets"),
   getById: (id: string) => api.get(`/widgets/${id}`),
-  create: (data: any) => api.post("/widgets", data),
-  update: (id: string, data: any) => api.put(`/widgets/${id}`, data),
+  create: (data: WidgetData) => api.post("/widgets", data),
+  update: (id: string, data: WidgetData) => api.put(`/widgets/${id}`, data),
   delete: (id: string) => api.delete(`/widgets/${id}`),
   generateEmbedCode: (id: string) =>
     api.post(`/widgets/${id}/generate-embed-code`),
 };
 
+interface ChatMessageData {
+  session_id: string;
+  message: string;
+  widget_id?: string;
+  user_data?: Record<string, any>;
+}
+
 // Chat API
 export const chatApi = {
   getAll: () => api.get("/chats"),
   getBySession: (sessionId: string) => api.get(`/chats/${sessionId}`),
-  sendMessage: (data: any) => api.post("/chats/send-message", data),
+  sendMessage: (data: ChatMessageData) => api.post("/chats/send-message", data),
 };
 
 export default api;
