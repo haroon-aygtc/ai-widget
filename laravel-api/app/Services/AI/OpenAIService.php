@@ -273,7 +273,7 @@ class OpenAIService
     public function getAvailableModels(): array
     {
         try {
-            $apiKey = $this->provider->decrypted_api_key;
+            $apiKey = $this->provider->getRawApiKey();
 
             if (!$apiKey) {
                 return [

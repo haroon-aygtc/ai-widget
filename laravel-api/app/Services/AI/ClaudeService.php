@@ -314,7 +314,7 @@ class ClaudeService
     public function getAvailableModels(): array
     {
         try {
-            $apiKey = $this->provider->decrypted_api_key;
+            $apiKey = $this->provider->getRawApiKey();
 
             if (!$apiKey) {
                 return [
@@ -364,8 +364,32 @@ class ClaudeService
                 ];
             }
 
-            // If direct model listing fails, try to validate the API key with a simple request
-            // This confirms the API key is valid even if we can't list models
+            // Claude doesn't have a direct models endpoint, so we return known models
+            // and validate the API key with a simple request
+            $knownModels = [
+                [
+                    'id' => 'claude-3-5-sonnet-20241022',
+                    'name' => 'Claude 3.5 Sonnet',
+                    'description' => 'Most intelligent model, best for complex tasks'
+                ],
+                [
+                    'id' => 'claude-3-opus-20240229',
+                    'name' => 'Claude 3 Opus',
+                    'description' => 'Powerful model for complex tasks'
+                ],
+                [
+                    'id' => 'claude-3-sonnet-20240229',
+                    'name' => 'Claude 3 Sonnet',
+                    'description' => 'Balance of intelligence and speed'
+                ],
+                [
+                    'id' => 'claude-3-haiku-20240307',
+                    'name' => 'Claude 3 Haiku',
+                    'description' => 'Fast and cost effective'
+                ]
+            ];
+
+            // Validate API key with a minimal request
             $response = Http::withHeaders([
                 'x-api-key' => $apiKey,
                 'Content-Type' => 'application/json',
@@ -373,26 +397,22 @@ class ClaudeService
             ])
             ->timeout(10)
             ->post($this->apiUrl . '/messages', [
-                'model' => 'claude-3-haiku-20240307', // Use a known model to test
+                'model' => 'claude-3-haiku-20240307',
                 'max_tokens' => 1,
                 'messages' => [
                     ['role' => 'user', 'content' => 'test']
                 ]
             ]);
 
-            \Log::info('Claude API test response', [
+            \Log::info('Claude API validation response', [
                 'status' => $response->status(),
-                'success' => $response->successful(),
-                'body_length' => strlen($response->body())
+                'success' => $response->successful()
             ]);
 
             if ($response->successful()) {
-                // Only return that validation was successful, but without models
-                // The UI layer should handle this case appropriately
                 return [
                     'success' => true,
-                    'message' => 'API key is valid, but model listing is not available',
-                    'models' => []
+                    'models' => $knownModels
                 ];
             } else {
                 $errorData = $response->json();
@@ -402,8 +422,7 @@ class ClaudeService
 
                 \Log::error('Failed to validate Claude API key', [
                     'status' => $response->status(),
-                    'error' => $errorMessage,
-                    'body' => $response->body()
+                    'error' => $errorMessage
                 ]);
 
                 return [

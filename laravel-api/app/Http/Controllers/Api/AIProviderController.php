@@ -210,15 +210,30 @@ class AIProviderController extends Controller
                 'api_key' => 'required|string'
             ]);
 
+            // Clean the API key - remove any "Bearer " prefix if accidentally included
+            $apiKey = trim(preg_replace('/^Bearer\s+/i', '', $validated['api_key']));
+
+            \Log::info('Fetching models for provider', [
+                'provider_type' => $validated['provider_type'],
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 5) . '...'
+            ]);
+
             $result = AIServiceFactory::getAvailableModels(
                 $validated['provider_type'],
-                $validated['api_key']
+                $apiKey
             );
+
+            \Log::info('Models fetch result', [
+                'success' => $result['success'],
+                'model_count' => count($result['models'] ?? []),
+                'provider_type' => $validated['provider_type']
+            ]);
 
             if (!$result['success']) {
                 return response()->json([
                     'success' => false,
-                    'message' => $result['message']
+                    'message' => $result['message'] ?? 'Failed to fetch models'
                 ], 400);
             }
 
@@ -226,18 +241,19 @@ class AIProviderController extends Controller
                 'success' => true,
                 'data' => [
                     'provider' => $validated['provider_type'],
-                    'models' => $result['models']
+                    'models' => $result['models'] ?? []
                 ]
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to get models for provider', [
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
                 'provider_type' => $request->input('provider_type')
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch models'
+                'message' => 'Failed to fetch models: ' . $e->getMessage()
             ], 500);
         }
     }
