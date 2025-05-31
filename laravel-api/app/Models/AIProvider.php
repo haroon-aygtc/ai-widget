@@ -46,6 +46,52 @@ class AIProvider extends Model
     ];
 
     /**
+     * The attributes that should be encrypted.
+     *
+     * @var array<int, string>
+     */
+    protected $encrypted = [
+        'api_key',
+    ];
+
+    /**
+     * Get the decrypted API key.
+     */
+    public function getDecryptedApiKeyAttribute(): ?string
+    {
+        if (empty($this->api_key)) {
+            return null;
+        }
+
+        try {
+            return \Illuminate\Support\Facades\Crypt::decryptString($this->api_key);
+        } catch (\Exception $e) {
+            // If decryption fails, assume it's already decrypted (for backward compatibility)
+            return $this->api_key;
+        }
+    }
+
+    /**
+     * Set the API key (encrypt it).
+     */
+    public function setApiKeyAttribute($value): void
+    {
+        if (empty($value)) {
+            $this->attributes['api_key'] = null;
+            return;
+        }
+
+        try {
+            // Try to decrypt - if it works, it's already encrypted
+            \Illuminate\Support\Facades\Crypt::decryptString($value);
+            $this->attributes['api_key'] = $value;
+        } catch (\Exception $e) {
+            // If decryption fails, it's not encrypted, so encrypt it
+            $this->attributes['api_key'] = \Illuminate\Support\Facades\Crypt::encryptString($value);
+        }
+    }
+
+    /**
      * Get the user that owns the AI provider.
      */
     public function user()

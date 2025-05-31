@@ -12,32 +12,32 @@ use Illuminate\Support\Facades\Validator;
 class AIProviderController extends Controller
 {
     protected $aiService;
-    
+
     public function __construct(AIService $aiService)
     {
         $this->aiService = $aiService;
     }
-    
+
     /**
      * Display a listing of the resource.
-     * 
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function index()
     {
         $providers = AIProvider::where('user_id', Auth::id())->get();
-        
+
         // Mask API keys for security
         $providers->each(function ($provider) {
             $provider->api_key = $this->maskApiKey($provider->api_key);
         });
-        
+
         return response()->json($providers);
     }
 
     /**
      * Store a newly created resource in storage.
-     * 
+     *
      * @param \Illuminate\Http\Request $request
      * @return \Illuminate\Http\JsonResponse
      */
@@ -52,11 +52,11 @@ class AIProviderController extends Controller
             'system_prompt' => 'nullable|string',
             'advanced_settings' => 'nullable|array',
         ]);
-        
+
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
-        
+
         $provider = new AIProvider();
         $provider->user_id = Auth::id();
         $provider->provider_type = $request->provider_type;
@@ -68,32 +68,32 @@ class AIProviderController extends Controller
         $provider->advanced_settings = $request->advanced_settings;
         $provider->is_active = true;
         $provider->save();
-        
+
         // Mask API key before returning
         $provider->api_key = $this->maskApiKey($provider->api_key);
-        
+
         return response()->json($provider, 201);
     }
 
     /**
      * Display the specified resource.
-     * 
+     *
      * @param string $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function show(string $id)
     {
         $provider = AIProvider::where('user_id', Auth::id())->findOrFail($id);
-        
+
         // Mask API key for security
         $provider->api_key = $this->maskApiKey($provider->api_key);
-        
+
         return response()->json($provider);
     }
 
     /**
      * Update the specified resource in storage.
-     * 
+     *
      * @param \Illuminate\Http\Request $request
      * @param string $id
      * @return \Illuminate\Http\JsonResponse
@@ -101,7 +101,7 @@ class AIProviderController extends Controller
     public function update(Request $request, string $id)
     {
         $provider = AIProvider::where('user_id', Auth::id())->findOrFail($id);
-        
+
         $validator = Validator::make($request->all(), [
             'provider_type' => 'string',
             'api_key' => 'string',
@@ -112,11 +112,11 @@ class AIProviderController extends Controller
             'advanced_settings' => 'nullable|array',
             'is_active' => 'boolean',
         ]);
-        
+
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
-        
+
         // Only update fields that are present in the request
         if ($request->has('provider_type')) $provider->provider_type = $request->provider_type;
         if ($request->has('api_key')) $provider->api_key = $request->api_key;
@@ -126,18 +126,18 @@ class AIProviderController extends Controller
         if ($request->has('system_prompt')) $provider->system_prompt = $request->system_prompt;
         if ($request->has('advanced_settings')) $provider->advanced_settings = $request->advanced_settings;
         if ($request->has('is_active')) $provider->is_active = $request->is_active;
-        
+
         $provider->save();
-        
+
         // Mask API key before returning
         $provider->api_key = $this->maskApiKey($provider->api_key);
-        
+
         return response()->json($provider);
     }
 
     /**
      * Remove the specified resource from storage.
-     * 
+     *
      * @param string $id
      * @return \Illuminate\Http\JsonResponse
      */
@@ -145,13 +145,13 @@ class AIProviderController extends Controller
     {
         $provider = AIProvider::where('user_id', Auth::id())->findOrFail($id);
         $provider->delete();
-        
+
         return response()->json(null, 204);
     }
-    
+
     /**
      * Test connection to an AI provider
-     * 
+     *
      * @param \Illuminate\Http\Request $request
      * @return \Illuminate\Http\JsonResponse
      */
@@ -161,16 +161,24 @@ class AIProviderController extends Controller
             'provider' => 'required|string',
             'apiKey' => 'required|string',
         ]);
-        
+
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
-        
+
         try {
+            // Decrypt API key for testing
+            $apiKey = $request->apiKey;
+            try {
+                $apiKey = \Illuminate\Support\Facades\Crypt::decryptString($request->apiKey);
+            } catch (\Exception $e) {
+                // If decryption fails, use as-is (might be plain text for testing)
+            }
+
             $result = $this->aiService->testConnection($request->provider, [
-                'apiKey' => $request->apiKey,
+                'apiKey' => $apiKey,
             ]);
-            
+
             return response()->json($result);
         } catch (\Exception $e) {
             return response()->json([
@@ -180,10 +188,10 @@ class AIProviderController extends Controller
             ], 500);
         }
     }
-    
+
     /**
      * Generate a response from an AI provider
-     * 
+     *
      * @param \Illuminate\Http\Request $request
      * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\StreamedResponse
      */
@@ -200,11 +208,11 @@ class AIProviderController extends Controller
             'stream' => 'nullable|boolean',
             'advancedSettings' => 'nullable|array',
         ]);
-        
+
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
-        
+
         try {
             $config = [
                 'apiKey' => $request->apiKey,
@@ -213,17 +221,17 @@ class AIProviderController extends Controller
                 'maxTokens' => $request->maxTokens,
                 'systemPrompt' => $request->systemPrompt,
             ];
-            
+
             // Add any advanced settings
             if ($request->has('advancedSettings')) {
                 $config = array_merge($config, $request->advancedSettings);
             }
-            
+
             // Handle streaming if requested
             if ($request->stream) {
                 return $this->aiService->processMessage($request->provider, $request->message, $config, true);
             }
-            
+
             $result = $this->aiService->processMessage($request->provider, $request->message, $config);
             return response()->json($result);
         } catch (\Exception $e) {
@@ -234,24 +242,24 @@ class AIProviderController extends Controller
             ], 500);
         }
     }
-    
+
     /**
      * Get available AI providers
-     * 
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function getAvailableProviders()
     {
         $providers = $this->aiService->getAvailableProviders();
-        
+
         return response()->json([
             'providers' => $providers
         ]);
     }
-    
+
     /**
      * Mask API key for security
-     * 
+     *
      * @param string $apiKey
      * @return string
      */
@@ -260,13 +268,13 @@ class AIProviderController extends Controller
         if (strlen($apiKey) <= 8) {
             return '********';
         }
-        
+
         $visibleChars = 4;
         $prefix = substr($apiKey, 0, $visibleChars);
         $suffix = substr($apiKey, -$visibleChars);
         $maskedLength = strlen($apiKey) - ($visibleChars * 2);
         $masked = str_repeat('*', $maskedLength);
-        
+
         return $prefix . $masked . $suffix;
     }
 }

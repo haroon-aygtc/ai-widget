@@ -14,15 +14,21 @@ return new class extends Migration
         Schema::create('chat_histories', function (Blueprint $table) {
             $table->id();
             $table->foreignId('widget_id')->constrained()->onDelete('cascade');
-            $table->string('session_id');
-            $table->string('user_identifier')->nullable(); // email, name, or other identifier
-            $table->text('message');
-            $table->text('response');
-            $table->string('sender_type'); // user or ai
-            $table->json('metadata')->nullable(); // additional data like tokens used, model, etc.
+            $table->string('session_id')->unique();
+            $table->string('user_name')->nullable();
+            $table->string('user_email')->nullable();
+            $table->string('user_phone')->nullable();
+            $table->json('user_data')->nullable();
+            $table->enum('status', ['active', 'ended', 'archived'])->default('active');
+            $table->timestamp('last_message_at')->nullable();
+            $table->integer('message_count')->default(0);
+            $table->float('total_response_time')->default(0);
+            $table->float('avg_response_time')->default(0);
             $table->timestamps();
-            
-            $table->index('session_id');
+
+            $table->index(['widget_id', 'created_at']);
+            $table->index(['session_id']);
+            $table->index(['status', 'last_message_at']);
         });
     }
 

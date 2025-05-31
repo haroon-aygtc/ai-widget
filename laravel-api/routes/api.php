@@ -50,7 +50,8 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Public routes for the widget
-Route::prefix('widget')->group(function () {
-    Route::get('{embedCode}', [WidgetController::class, 'getWidgetConfig']);
-    Route::post('{embedCode}/send-message', [ChatController::class, 'sendPublicMessage']);
+Route::prefix('widget')->middleware('throttle:widget,120,1')->group(function () {
+    Route::get('{embedCode}', [WidgetController::class, 'getConfig']);
+    Route::post('{embedCode}/send-message', [ChatController::class, 'sendMessage'])
+        ->middleware('throttle:30,1'); // 30 messages per minute for public widget
 });

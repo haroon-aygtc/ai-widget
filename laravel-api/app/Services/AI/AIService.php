@@ -49,22 +49,28 @@ class AIService
     {
         try {
             $providerService = $this->getProvider($provider);
-            
+
+            // Add context to message if provided
+            if (!empty($context)) {
+                $config['context'] = $context;
+            }
+
             // Log the request
             Log::info('AI Request', [
                 'provider' => $provider,
-                'message' => $message,
+                'message' => substr($message, 0, 100) . (strlen($message) > 100 ? '...' : ''),
+                'context_messages' => count($context),
                 'config' => array_filter($config, function ($key) {
                     return $key !== 'apiKey'; // Don't log API keys
                 }, ARRAY_FILTER_USE_KEY)
             ]);
-            
+
             if ($stream && method_exists($providerService, 'streamResponse')) {
                 return $providerService->streamResponse($message, $config);
             }
-            
+
             $response = $providerService->generateResponse($message, $config);
-            
+
             // Log the response (excluding sensitive data)
             Log::info('AI Response', [
                 'provider' => $provider,
@@ -72,7 +78,7 @@ class AIService
                 'model' => $response['model'] ?? null,
                 'usage' => $response['usage'] ?? null
             ]);
-            
+
             return $response;
         } catch (\Exception $e) {
             Log::error('AI Provider Error', [
@@ -80,17 +86,17 @@ class AIService
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             // Try fallback if available
             if (isset($config['fallbackProvider']) && $config['fallbackProvider'] !== $provider) {
                 Log::info('Attempting fallback to ' . $config['fallbackProvider']);
                 return $this->processMessage($config['fallbackProvider'], $message, $config, $stream);
             }
-            
+
             throw $e;
         }
     }
-    
+
     /**
      * Get all available providers
      *
@@ -100,7 +106,7 @@ class AIService
     {
         return array_keys($this->providers);
     }
-    
+
     /**
      * Test connection to a provider
      *
@@ -115,7 +121,7 @@ class AIService
             if (method_exists($providerService, 'testConnection')) {
                 return $providerService->testConnection($config);
             }
-            
+
             // Default test by sending a simple message
             $response = $providerService->generateResponse('Test connection', $config);
             return [
