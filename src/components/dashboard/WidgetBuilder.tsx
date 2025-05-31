@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -23,11 +23,26 @@ import { Separator } from "@/components/ui/separator";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Check, Code, Copy, Eye, Save, Settings } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { Check, Code, Copy, Eye, Save, Settings, Loader2 } from "lucide-react";
 import WidgetPreview from "./WidgetPreview";
+import { useWidgetStore } from "@/lib/store";
+import { useAIProviderStore } from "@/lib/store";
+import { useNavigate } from "react-router-dom";
 
 const WidgetBuilder = () => {
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const { currentWidget, createWidget, updateWidget, isLoading } =
+    useWidgetStore();
+  const { providers, fetchProviders } = useAIProviderStore();
+
   const [activeTab, setActiveTab] = useState("design");
+  const [widgetName, setWidgetName] = useState("");
+  const [widgetDescription, setWidgetDescription] = useState("");
+  const [selectedAIProvider, setSelectedAIProvider] = useState("");
+  const [saving, setSaving] = useState(false);
+
   const [widgetConfig, setWidgetConfig] = useState({
     design: {
       primaryColor: "#3b82f6",
@@ -39,18 +54,16 @@ const WidgetBuilder = () => {
       headerText: "Chat with AI Assistant",
       buttonText: "Send",
       placeholderText: "Type your message here...",
-      position: "bottom-right",
     },
     behavior: {
+      welcomeMessage:
+        "Welcome to our AI chat assistant. How can I help you today?",
       initialMessage: "Hello! How can I help you today?",
       typingIndicator: true,
       showTimestamp: true,
       autoResponse: true,
       responseDelay: 500,
       maxMessages: 50,
-      aiProvider: "openai",
-      welcomeMessage:
-        "Welcome to our AI chat assistant. How can I help you today?",
     },
     placement: {
       position: "bottom-right",
@@ -61,9 +74,40 @@ const WidgetBuilder = () => {
       excludePages: "",
       triggerType: "button",
       triggerText: "Chat with us",
-      triggerIcon: "message",
     },
   });
+
+  // Load AI providers and current widget on mount
+  useEffect(() => {
+    fetchProviders();
+
+    if (currentWidget) {
+      setWidgetName(currentWidget.name);
+      setWidgetDescription(currentWidget.description || "");
+      setSelectedAIProvider(currentWidget.ai_provider_id || "");
+
+      if (currentWidget.design) {
+        setWidgetConfig((prev) => ({
+          ...prev,
+          design: { ...prev.design, ...currentWidget.design },
+        }));
+      }
+
+      if (currentWidget.behavior) {
+        setWidgetConfig((prev) => ({
+          ...prev,
+          behavior: { ...prev.behavior, ...currentWidget.behavior },
+        }));
+      }
+
+      if (currentWidget.placement) {
+        setWidgetConfig((prev) => ({
+          ...prev,
+          placement: { ...prev.placement, ...currentWidget.placement },
+        }));
+      }
+    }
+  }, [currentWidget, fetchProviders]);
 
   const handleDesignChange = (field: string, value: any) => {
     setWidgetConfig({
@@ -96,70 +140,137 @@ const WidgetBuilder = () => {
   };
 
   const saveWidget = async () => {
-    try {
-      // Import the API service
-      const { widgetApi } = await import("@/lib/api");
+    if (!widgetName.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a widget name",
+        variant: "destructive",
+      });
+      return;
+    }
 
-      // Call the create endpoint
-      const response = await widgetApi.create({
-        name: "New Widget", // TODO: Add name input field
+    try {
+      setSaving(true);
+
+      const widgetData = {
+        name: widgetName,
+        description: widgetDescription,
+        ai_provider_id: selectedAIProvider || null,
         design: widgetConfig.design,
         behavior: widgetConfig.behavior,
         placement: widgetConfig.placement,
         status: "active",
-      });
+      };
 
-      console.log("Widget saved successfully:", response.data);
-      alert("Widget saved successfully!");
-    } catch (error) {
+      if (currentWidget?.id) {
+        await updateWidget(currentWidget.id, widgetData);
+        toast({
+          title: "Success",
+          description: "Widget updated successfully!",
+        });
+      } else {
+        await createWidget(widgetData);
+        toast({
+          title: "Success",
+          description: "Widget created successfully!",
+        });
+      }
+
+      navigate("/widgets");
+    } catch (error: any) {
       console.error("Save widget error:", error);
-      alert("Failed to save widget. Please try again.");
+      toast({
+        title: "Error",
+        description:
+          error.message || "Failed to save widget. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
   const generateEmbedCode = async (widgetId: string) => {
     try {
-      // Import the store
-      const { useWidgetStore } = await import("@/lib/store");
-      const generateCode = useWidgetStore.getState().generateEmbedCode;
-
-      // Call the generate embed code function
-      const embedCode = await generateCode(widgetId);
-
-      return `<script src="${window.location.origin}/widget.js" data-widget-id="${embedCode || widgetId}"></script>`;
+      const embedCode = await useWidgetStore
+        .getState()
+        .generateEmbedCode(widgetId);
+      return `<script src="${window.location.origin}/widget.js" data-widget-id="${embedCode}"></script>`;
     } catch (error) {
       console.error("Generate embed code error:", error);
-      return `<script src="${window.location.origin}/widget.js" data-widget-id="widget-demo"></script>`;
+      throw error;
     }
   };
 
   const copyEmbedCode = async () => {
-    // For demo purposes, we'll use a hardcoded widget ID
-    // In a real implementation, this would be the ID of the saved widget
-    const widgetId = "demo-widget-123";
+    if (!currentWidget?.id) {
+      toast({
+        title: "Error",
+        description: "Please save the widget first to generate embed code",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    const code = await generateEmbedCode(widgetId);
-    navigator.clipboard.writeText(code);
+    try {
+      const code = await generateEmbedCode(currentWidget.id);
+      await navigator.clipboard.writeText(code);
 
-    // Show toast notification
-    alert("Embed code copied to clipboard!");
+      toast({
+        title: "Success",
+        description: "Embed code copied to clipboard!",
+      });
+    } catch (error) {
+      console.error("Copy embed code error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to copy embed code. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
     <div className="flex flex-col h-full bg-background">
       <div className="flex items-center justify-between p-6 border-b">
-        <div>
-          <h1 className="text-2xl font-bold">Widget Builder</h1>
-          <p className="text-muted-foreground">Customize your AI chat widget</p>
+        <div className="flex-1 max-w-md">
+          <div className="space-y-2">
+            <Label htmlFor="widget-name">Widget Name</Label>
+            <Input
+              id="widget-name"
+              value={widgetName}
+              onChange={(e) => setWidgetName(e.target.value)}
+              placeholder="Enter widget name"
+              className="text-lg font-semibold"
+            />
+          </div>
+          <div className="mt-2 space-y-2">
+            <Label htmlFor="widget-description">Description (Optional)</Label>
+            <Input
+              id="widget-description"
+              value={widgetDescription}
+              onChange={(e) => setWidgetDescription(e.target.value)}
+              placeholder="Brief description of your widget"
+              className="text-sm text-muted-foreground"
+            />
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => { }}>
-            <Eye className="mr-2 h-4 w-4" />
-            Preview
+          <Button
+            variant="outline"
+            onClick={copyEmbedCode}
+            disabled={!currentWidget?.id}
+          >
+            <Copy className="mr-2 h-4 w-4" />
+            Copy Embed Code
           </Button>
-          <Button onClick={saveWidget}>
-            <Save className="mr-2 h-4 w-4" />
-            Save Widget
+          <Button onClick={saveWidget} disabled={saving || isLoading}>
+            {saving ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-4 w-4" />
+            )}
+            {currentWidget?.id ? "Update Widget" : "Save Widget"}
           </Button>
         </div>
       </div>
@@ -423,7 +534,7 @@ const WidgetBuilder = () => {
                 <CardHeader>
                   <CardTitle>AI Provider</CardTitle>
                   <CardDescription>
-                    Select and configure your AI provider
+                    Select your configured AI provider
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -431,32 +542,35 @@ const WidgetBuilder = () => {
                     <div className="space-y-2">
                       <Label>AI Provider</Label>
                       <Select
-                        value={widgetConfig.behavior.aiProvider}
-                        onValueChange={(value) =>
-                          handleBehaviorChange("aiProvider", value)
-                        }
+                        value={selectedAIProvider}
+                        onValueChange={setSelectedAIProvider}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select AI provider" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="openai">OpenAI</SelectItem>
-                          <SelectItem value="gemini">Google Gemini</SelectItem>
-                          <SelectItem value="claude">
-                            Anthropic Claude
-                          </SelectItem>
-                          <SelectItem value="mistral">Mistral AI</SelectItem>
-                          <SelectItem value="huggingface">
-                            HuggingFace
-                          </SelectItem>
+                          <SelectItem value="">No Provider</SelectItem>
+                          {providers.map((provider) => (
+                            <SelectItem key={provider.id} value={provider.id}>
+                              {provider.provider_type} - {provider.model}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
 
-                    <Button variant="outline" className="w-full">
-                      <Settings className="mr-2 h-4 w-4" />
-                      Configure Provider Settings
-                    </Button>
+                    {providers.length === 0 && (
+                      <div className="text-sm text-muted-foreground p-3 bg-muted rounded-md">
+                        No AI providers configured.
+                        <Button
+                          variant="link"
+                          className="p-0 h-auto font-normal"
+                          onClick={() => navigate("/ai-providers")}
+                        >
+                          Set up a provider first
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -656,17 +770,25 @@ const WidgetBuilder = () => {
           </Tabs>
 
           <div className="mt-6 flex justify-between">
-            <Button variant="outline" onClick={() => { }}>
-              Reset to Default
+            <Button variant="outline" onClick={() => navigate("/widgets")}>
+              Cancel
             </Button>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={copyEmbedCode}>
+              <Button
+                variant="outline"
+                onClick={copyEmbedCode}
+                disabled={!currentWidget?.id}
+              >
                 <Copy className="mr-2 h-4 w-4" />
                 Copy Embed Code
               </Button>
-              <Button onClick={saveWidget}>
-                <Save className="mr-2 h-4 w-4" />
-                Save Widget
+              <Button onClick={saveWidget} disabled={saving || isLoading}>
+                {saving ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
+                {currentWidget?.id ? "Update Widget" : "Save Widget"}
               </Button>
             </div>
           </div>
@@ -678,11 +800,21 @@ const WidgetBuilder = () => {
             <div className="bg-background rounded-lg border shadow-sm p-4 h-[600px] overflow-hidden">
               <WidgetPreview config={widgetConfig} />
             </div>
-            <div className="mt-4">
-              <Button variant="outline" className="w-full" onClick={() => { }}>
+            <div className="mt-4 space-y-2">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={copyEmbedCode}
+                disabled={!currentWidget?.id}
+              >
                 <Code className="mr-2 h-4 w-4" />
-                View Embed Code
+                Copy Embed Code
               </Button>
+              {!currentWidget?.id && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Save widget first to get embed code
+                </p>
+              )}
             </div>
           </div>
         </div>

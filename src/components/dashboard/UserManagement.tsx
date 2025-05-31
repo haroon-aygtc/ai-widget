@@ -29,6 +29,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import api from "@/lib/api";
 import {
   Search,
   Plus,
@@ -38,6 +39,7 @@ import {
   UserX,
   Shield,
   User,
+  Loader2,
 } from "lucide-react";
 
 interface User {
@@ -46,101 +48,131 @@ interface User {
   email: string;
   role: "admin" | "user";
   avatar?: string;
-  status: "active" | "inactive";
+  status?: "active" | "inactive";
   created_at: string;
-  last_login?: string;
+  updated_at?: string;
+  email_verified_at?: string;
 }
 
 const UserManagement: React.FC = () => {
   const { toast } = useToast();
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: "1",
-      name: "John Doe",
-      email: "john@example.com",
-      role: "admin",
-      status: "active",
-      created_at: "2024-01-15",
-      last_login: "2024-01-20",
-    },
-    {
-      id: "2",
-      name: "Jane Smith",
-      email: "jane@example.com",
-      role: "user",
-      status: "active",
-      created_at: "2024-01-10",
-      last_login: "2024-01-19",
-    },
-    {
-      id: "3",
-      name: "Bob Wilson",
-      email: "bob@example.com",
-      role: "user",
-      status: "inactive",
-      created_at: "2024-01-05",
-      last_login: "2024-01-15",
-    },
-  ]);
-  const [loading, setLoading] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Form state
   const [formData, setFormData] = useState({
     name: "",
     email: "",
+    password: "",
     role: "user" as "admin" | "user",
-    status: "active" as "active" | "inactive",
   });
 
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch =
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = !roleFilter || user.role === roleFilter;
-    const matchesStatus = !statusFilter || user.status === statusFilter;
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+  // Load users on component mount and when filters change
+  useEffect(() => {
+    fetchUsers();
+  }, [currentPage, searchQuery, roleFilter, statusFilter]);
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+
+      if (searchQuery) params.append("search", searchQuery);
+      if (roleFilter) params.append("role", roleFilter);
+      if (statusFilter) params.append("status", statusFilter);
+      params.append("page", currentPage.toString());
+
+      const response = await api.get(`/users?${params.toString()}`);
+
+      if (response.data.data) {
+        setUsers(response.data.data);
+        setTotalPages(Math.ceil(response.data.total / response.data.per_page));
+      } else {
+        setUsers(response.data);
+      }
+    } catch (error: any) {
+      console.error("Failed to fetch users:", error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to load users",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const validateForm = () => {
+    const errors: Record<string, string> = {};
+
+    if (!formData.name.trim()) errors.name = "Name is required";
+    if (!formData.email.trim()) errors.email = "Email is required";
+    if (!selectedUser && !formData.password.trim())
+      errors.password = "Password is required";
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const handleCreateUser = async () => {
-    try {
-      const newUser: User = {
-        id: Date.now().toString(),
-        ...formData,
-        created_at: new Date().toISOString().split("T")[0],
-      };
+    if (!validateForm()) return;
 
-      setUsers([...users, newUser]);
+    try {
+      const response = await api.post("/users", {
+        ...formData,
+        password_confirmation: formData.password,
+      });
+
       toast({
         title: "Success",
         description: "User created successfully",
       });
       setIsCreateDialogOpen(false);
       resetForm();
-    } catch (error) {
+      fetchUsers();
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.message || "Failed to create user";
       toast({
         title: "Error",
-        description: "Failed to create user",
+        description: errorMessage,
         variant: "destructive",
       });
+
+      if (error.response?.data?.errors) {
+        const backendErrors: Record<string, string> = {};
+        Object.entries(error.response.data.errors).forEach(
+          ([key, messages]: [string, any]) => {
+            backendErrors[key] = Array.isArray(messages)
+              ? messages[0]
+              : messages;
+          },
+        );
+        setFormErrors(backendErrors);
+      }
     }
   };
 
   const handleUpdateUser = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || !validateForm()) return;
 
     try {
-      setUsers(
-        users.map((user) =>
-          user.id === selectedUser.id ? { ...user, ...formData } : user,
-        ),
-      );
+      const updateData = { ...formData };
+      if (!updateData.password) {
+        delete updateData.password;
+      }
+
+      await api.put(`/users/${selectedUser.id}`, updateData);
 
       toast({
         title: "Success",
@@ -148,12 +180,27 @@ const UserManagement: React.FC = () => {
       });
       setIsEditDialogOpen(false);
       resetForm();
-    } catch (error) {
+      fetchUsers();
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.message || "Failed to update user";
       toast({
         title: "Error",
-        description: "Failed to update user",
+        description: errorMessage,
         variant: "destructive",
       });
+
+      if (error.response?.data?.errors) {
+        const backendErrors: Record<string, string> = {};
+        Object.entries(error.response.data.errors).forEach(
+          ([key, messages]: [string, any]) => {
+            backendErrors[key] = Array.isArray(messages)
+              ? messages[0]
+              : messages;
+          },
+        );
+        setFormErrors(backendErrors);
+      }
     }
   };
 
@@ -161,15 +208,16 @@ const UserManagement: React.FC = () => {
     if (!confirm("Are you sure you want to delete this user?")) return;
 
     try {
-      setUsers(users.filter((user) => user.id !== id));
+      await api.delete(`/users/${id}`);
       toast({
         title: "Success",
         description: "User deleted successfully",
       });
-    } catch (error) {
+      fetchUsers();
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to delete user",
+        description: error.response?.data?.message || "Failed to delete user",
         variant: "destructive",
       });
     }
@@ -177,25 +225,17 @@ const UserManagement: React.FC = () => {
 
   const handleToggleStatus = async (id: string) => {
     try {
-      setUsers(
-        users.map((user) =>
-          user.id === id
-            ? {
-                ...user,
-                status: user.status === "active" ? "inactive" : "active",
-              }
-            : user,
-        ),
-      );
-
+      await api.patch(`/users/${id}/toggle-status`);
       toast({
         title: "Success",
         description: "User status updated successfully",
       });
-    } catch (error) {
+      fetchUsers();
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to update user status",
+        description:
+          error.response?.data?.message || "Failed to update user status",
         variant: "destructive",
       });
     }
@@ -206,9 +246,10 @@ const UserManagement: React.FC = () => {
     setFormData({
       name: user.name,
       email: user.email,
+      password: "",
       role: user.role,
-      status: user.status,
     });
+    setFormErrors({});
     setIsEditDialogOpen(true);
   };
 
@@ -216,9 +257,10 @@ const UserManagement: React.FC = () => {
     setFormData({
       name: "",
       email: "",
+      password: "",
       role: "user",
-      status: "active",
     });
+    setFormErrors({});
     setSelectedUser(null);
   };
 
@@ -252,13 +294,22 @@ const UserManagement: React.FC = () => {
                   placeholder="Search users..."
                   className="pl-8"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
                 />
               </div>
             </div>
 
             <div className="w-full md:w-[150px]">
-              <Select value={roleFilter} onValueChange={setRoleFilter}>
+              <Select
+                value={roleFilter}
+                onValueChange={(value) => {
+                  setRoleFilter(value);
+                  setCurrentPage(1);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="All Roles" />
                 </SelectTrigger>
@@ -271,7 +322,13 @@ const UserManagement: React.FC = () => {
             </div>
 
             <div className="w-full md:w-[150px]">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => {
+                  setStatusFilter(value);
+                  setCurrentPage(1);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
@@ -286,9 +343,10 @@ const UserManagement: React.FC = () => {
 
           {loading ? (
             <div className="flex justify-center items-center py-8">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="ml-2">Loading users...</span>
             </div>
-          ) : filteredUsers.length === 0 ? (
+          ) : users.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No users found.
             </div>
@@ -298,11 +356,11 @@ const UserManagement: React.FC = () => {
                 <div className="col-span-4">User</div>
                 <div className="col-span-2">Role</div>
                 <div className="col-span-2">Status</div>
-                <div className="col-span-2">Last Login</div>
+                <div className="col-span-2">Created</div>
                 <div className="col-span-2 text-right">Actions</div>
               </div>
 
-              {filteredUsers.map((user) => (
+              {users.map((user) => (
                 <div
                   key={user.id}
                   className="grid grid-cols-12 p-4 border-t items-center"
@@ -334,7 +392,7 @@ const UserManagement: React.FC = () => {
                     </Badge>
                   </div>
                   <div className="col-span-2">
-                    {user.status === "active" ? (
+                    {user.status === "active" || !user.status ? (
                       <Badge variant="default" className="bg-green-500">
                         Active
                       </Badge>
@@ -343,7 +401,7 @@ const UserManagement: React.FC = () => {
                     )}
                   </div>
                   <div className="col-span-2 text-sm text-muted-foreground">
-                    {user.last_login || "Never"}
+                    {new Date(user.created_at).toLocaleDateString()}
                   </div>
                   <div className="col-span-2 flex justify-end gap-2">
                     <Button
@@ -381,6 +439,47 @@ const UserManagement: React.FC = () => {
               ))}
             </div>
           )}
+
+          {totalPages > 1 && (
+            <div className="flex justify-center mt-4 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1 || loading}
+              >
+                Previous
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                  const page = currentPage <= 3 ? i + 1 : currentPage - 2 + i;
+                  if (page > totalPages) return null;
+                  return (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(page)}
+                      className="w-8 h-8 p-0"
+                      disabled={loading}
+                    >
+                      {page}
+                    </Button>
+                  );
+                })}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                disabled={currentPage === totalPages || loading}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -404,7 +503,11 @@ const UserManagement: React.FC = () => {
                   setFormData({ ...formData, name: e.target.value })
                 }
                 placeholder="Enter full name"
+                className={formErrors.name ? "border-red-500" : ""}
               />
+              {formErrors.name && (
+                <p className="text-sm text-red-500">{formErrors.name}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -417,7 +520,28 @@ const UserManagement: React.FC = () => {
                   setFormData({ ...formData, email: e.target.value })
                 }
                 placeholder="Enter email address"
+                className={formErrors.email ? "border-red-500" : ""}
               />
+              {formErrors.email && (
+                <p className="text-sm text-red-500">{formErrors.email}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
+                placeholder="Enter password"
+                className={formErrors.password ? "border-red-500" : ""}
+              />
+              {formErrors.password && (
+                <p className="text-sm text-red-500">{formErrors.password}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -428,7 +552,9 @@ const UserManagement: React.FC = () => {
                   setFormData({ ...formData, role: value })
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger
+                  className={formErrors.role ? "border-red-500" : ""}
+                >
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
@@ -436,24 +562,9 @@ const UserManagement: React.FC = () => {
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value: "active" | "inactive") =>
-                  setFormData({ ...formData, status: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
+              {formErrors.role && (
+                <p className="text-sm text-red-500">{formErrors.role}</p>
+              )}
             </div>
           </div>
 
@@ -489,7 +600,11 @@ const UserManagement: React.FC = () => {
                   setFormData({ ...formData, name: e.target.value })
                 }
                 placeholder="Enter full name"
+                className={formErrors.name ? "border-red-500" : ""}
               />
+              {formErrors.name && (
+                <p className="text-sm text-red-500">{formErrors.name}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -502,7 +617,28 @@ const UserManagement: React.FC = () => {
                   setFormData({ ...formData, email: e.target.value })
                 }
                 placeholder="Enter email address"
+                className={formErrors.email ? "border-red-500" : ""}
               />
+              {formErrors.email && (
+                <p className="text-sm text-red-500">{formErrors.email}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit_password">Password</Label>
+              <Input
+                id="edit_password"
+                type="password"
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
+                placeholder="Leave blank to keep current password"
+                className={formErrors.password ? "border-red-500" : ""}
+              />
+              {formErrors.password && (
+                <p className="text-sm text-red-500">{formErrors.password}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -513,7 +649,9 @@ const UserManagement: React.FC = () => {
                   setFormData({ ...formData, role: value })
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger
+                  className={formErrors.role ? "border-red-500" : ""}
+                >
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
@@ -521,24 +659,9 @@ const UserManagement: React.FC = () => {
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit_status">Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value: "active" | "inactive") =>
-                  setFormData({ ...formData, status: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
+              {formErrors.role && (
+                <p className="text-sm text-red-500">{formErrors.role}</p>
+              )}
             </div>
           </div>
 
