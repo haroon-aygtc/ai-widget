@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -21,7 +21,9 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, AlertCircle, Settings, Key, Zap } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { CheckCircle, AlertCircle, Settings, Key, Zap, Plus, Trash2, Edit, Eye, EyeOff, RefreshCw, Sparkles } from "lucide-react";
 
 interface AIProviderSetupProps {
   onSave?: (config: AIProviderConfig) => void;
@@ -44,32 +46,42 @@ interface AIProviderConfig {
 const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
   onSave = () => {},
 }) => {
-  const [activeProvider, setActiveProvider] = useState<string>("openai");
-  const [apiKey, setApiKey] = useState<string>("");
-  const [model, setModel] = useState<string>("gpt-4o");
-  const [temperature, setTemperature] = useState<number>(0.7);
-  const [maxTokens, setMaxTokens] = useState<number>(2048);
-  const [systemPrompt, setSystemPrompt] = useState<string>(
-    "You are a helpful assistant.",
-  );
-  const [streamResponse, setStreamResponse] = useState<boolean>(true);
-  const [contextWindow, setContextWindow] = useState<number>(4096);
-  const [topP, setTopP] = useState<number>(0.95);
+  const [activeTab, setActiveTab] = useState<string>("providers");
+  const [providers, setProviders] = useState<any[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(false);
+  
+  // Form state for provider configuration
+  const [formData, setFormData] = useState({
+    provider_type: "openai",
+    api_key: "",
+    model: "gpt-4o",
+    temperature: 0.7,
+    max_tokens: 2048,
+    system_prompt: "You are a helpful assistant.",
+    stream_response: true,
+    context_window: 4096,
+    top_p: 0.95,
+    is_active: true,
+  });
+  
   const [testStatus, setTestStatus] = useState<
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [testMessage, setTestMessage] = useState<string>("");
 
-  const providers = [
-    { id: "openai", name: "OpenAI", logo: "🤖" },
-    { id: "gemini", name: "Google Gemini", logo: "🌀" },
-    { id: "claude", name: "Anthropic Claude", logo: "🧠" },
-    { id: "mistral", name: "Mistral AI", logo: "🌪️" },
-    { id: "groq", name: "Groq", logo: "⚡" },
-    { id: "huggingface", name: "HuggingFace", logo: "🤗" },
-    { id: "grok", name: "Grok (X.AI)", logo: "✖️" },
-    { id: "openrouter", name: "OpenRouter", logo: "🔄" },
-    { id: "deepseek", name: "DeepSeek", logo: "🔍" },
+  const availableProviders = [
+    { id: "openai", name: "OpenAI", logo: "🤖", description: "GPT-4, GPT-3.5 Turbo models" },
+    { id: "gemini", name: "Google Gemini", logo: "🌀", description: "Gemini Pro, Ultra models" },
+    { id: "claude", name: "Anthropic Claude", logo: "🧠", description: "Claude 3 Opus, Sonnet, Haiku" },
+    { id: "mistral", name: "Mistral AI", logo: "🌪️", description: "Mistral Large, Medium, Small" },
+    { id: "groq", name: "Groq", logo: "⚡", description: "Ultra-fast inference" },
+    { id: "huggingface", name: "HuggingFace", logo: "🤗", description: "Open source models" },
+    { id: "grok", name: "Grok (X.AI)", logo: "✖️", description: "Grok-1 model" },
+    { id: "openrouter", name: "OpenRouter", logo: "🔄", description: "Multiple model access" },
+    { id: "deepseek", name: "DeepSeek", logo: "🔍", description: "DeepSeek Chat, Coder" },
   ];
 
   const modelsByProvider: Record<string, string[]> = {
@@ -100,9 +112,72 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     deepseek: ["deepseek-chat", "deepseek-coder"],
   };
 
-  const handleProviderChange = (provider: string) => {
-    setActiveProvider(provider);
-    setModel(modelsByProvider[provider][0]);
+  // Load providers on component mount
+  useEffect(() => {
+    // Mock data - replace with actual API call
+    setProviders([
+      {
+        id: "1",
+        provider_type: "openai",
+        api_key: "sk-*********************",
+        model: "gpt-4o",
+        is_active: true,
+        created_at: "2024-01-15T10:30:00Z",
+        last_used: "2024-01-20T14:22:00Z",
+      },
+      {
+        id: "2",
+        provider_type: "claude",
+        api_key: "sk-ant-*********************",
+        model: "claude-3-opus-20240229",
+        is_active: false,
+        created_at: "2024-01-10T09:15:00Z",
+        last_used: "2024-01-18T16:45:00Z",
+      },
+    ]);
+  }, []);
+
+  const handleProviderSelect = (provider: any) => {
+    setSelectedProvider(provider);
+    setFormData({
+      provider_type: provider.provider_type,
+      api_key: provider.api_key,
+      model: provider.model,
+      temperature: provider.temperature || 0.7,
+      max_tokens: provider.max_tokens || 2048,
+      system_prompt: provider.system_prompt || "You are a helpful assistant.",
+      stream_response: provider.stream_response ?? true,
+      context_window: provider.context_window || 4096,
+      top_p: provider.top_p || 0.95,
+      is_active: provider.is_active,
+    });
+    setIsEditing(true);
+    setActiveTab("configure");
+  };
+
+  const handleNewProvider = () => {
+    setSelectedProvider(null);
+    setFormData({
+      provider_type: "openai",
+      api_key: "",
+      model: "gpt-4o",
+      temperature: 0.7,
+      max_tokens: 2048,
+      system_prompt: "You are a helpful assistant.",
+      stream_response: true,
+      context_window: 4096,
+      top_p: 0.95,
+      is_active: true,
+    });
+    setIsEditing(false);
+    setActiveTab("configure");
+  };
+
+  const toggleApiKeyVisibility = (providerId: string) => {
+    setShowApiKey(prev => ({
+      ...prev,
+      [providerId]: !prev[providerId]
+    }));
   };
 
   const handleTestConnection = async () => {
@@ -183,40 +258,164 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
   };
 
   return (
-    <div className="bg-background p-6 rounded-lg w-full">
-      <div className="flex flex-col space-y-6">
+    <div className="space-y-6 bg-background">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">AI Provider Setup</h1>
+          <h1 className="text-3xl font-bold tracking-tight">AI Provider Setup</h1>
           <p className="text-muted-foreground">
-            Connect and configure your preferred AI provider
+            Connect and configure your AI providers for chat widgets
           </p>
         </div>
+        <Button onClick={handleNewProvider} className="gap-2">
+          <Plus className="h-4 w-4" />
+          Add Provider
+        </Button>
+      </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Select AI Provider</CardTitle>
-            <CardDescription>
-              Choose the AI service you want to use with your chat widget
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {providers.map((provider) => (
-                <Button
-                  key={provider.id}
-                  variant={
-                    activeProvider === provider.id ? "default" : "outline"
-                  }
-                  className="h-24 flex flex-col items-center justify-center gap-2"
-                  onClick={() => handleProviderChange(provider.id)}
-                >
-                  <span className="text-2xl">{provider.logo}</span>
-                  <span>{provider.name}</span>
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="providers" className="gap-2">
+            <Sparkles className="h-4 w-4" />
+            Providers
+          </TabsTrigger>
+          <TabsTrigger value="configure" className="gap-2">
+            <Settings className="h-4 w-4" />
+            Configure
+          </TabsTrigger>
+          <TabsTrigger value="available" className="gap-2">
+            <Plus className="h-4 w-4" />
+            Available
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Configured Providers Tab */}
+        <TabsContent value="providers" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Configured Providers</CardTitle>
+              <CardDescription>
+                Manage your existing AI provider configurations
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {providers.length === 0 ? (
+                <div className="text-center py-12">
+                  <Sparkles className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No providers configured</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Add your first AI provider to get started with chat widgets
+                  </p>
+                  <Button onClick={handleNewProvider} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Add Provider
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {providers.map((provider) => (
+                    <div
+                      key={provider.id}
+                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                          <span className="text-lg">
+                            {availableProviders.find(p => p.id === provider.provider_type)?.logo || "🤖"}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold capitalize">{provider.provider_type}</h3>
+                            <Badge variant={provider.is_active ? "default" : "secondary"}>
+                              {provider.is_active ? "Active" : "Inactive"}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            Model: {provider.model} • Last used: {new Date(provider.last_used).toLocaleDateString()}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-muted-foreground">API Key:</span>
+                            <code className="text-xs bg-muted px-1 rounded">
+                              {showApiKey[provider.id] ? provider.api_key : provider.api_key.replace(/./g, '*')}
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => toggleApiKeyVisibility(provider.id)}
+                            >
+                              {showApiKey[provider.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleProviderSelect(provider)}
+                          className="gap-2"
+                        >
+                          <Edit className="h-4 w-4" />
+                          Configure
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-2 text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Available Providers Tab */}
+        <TabsContent value="available" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Available AI Providers</CardTitle>
+              <CardDescription>
+                Choose from our supported AI providers to add to your configuration
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {availableProviders.map((provider) => (
+                  <Card key={provider.id} className="cursor-pointer hover:shadow-md transition-shadow">
+                    <CardContent className="p-6">
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className="text-2xl">{provider.logo}</span>
+                        <div>
+                          <h3 className="font-semibold">{provider.name}</h3>
+                          <p className="text-xs text-muted-foreground">{provider.description}</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2"
+                        onClick={() => {
+                          setFormData(prev => ({ ...prev, provider_type: provider.id }));
+                          handleNewProvider();
+                        }}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Provider
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <Card>
           <CardHeader>
