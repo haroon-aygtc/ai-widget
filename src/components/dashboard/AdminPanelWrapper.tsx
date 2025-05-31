@@ -55,6 +55,11 @@ const AdminPanelWrapper: React.FC<AdminPanelWrapperProps> = ({
       icon: <Sparkles className="h-5 w-5" />,
     },
     {
+      path: "/ai-models",
+      label: "AI Models",
+      icon: <Sparkles className="h-5 w-5" />,
+    },
+    {
       path: "/analytics",
       label: "Analytics",
       icon: <BarChart3 className="h-5 w-5" />,

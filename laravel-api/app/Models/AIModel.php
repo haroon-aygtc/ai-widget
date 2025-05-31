@@ -5,16 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class AIProvider extends Model
+class AIModel extends Model
 {
     use HasFactory;
-
-    /**
-     * The table associated with the model.
-     *
-     * @var string
-     */
-    protected $table = 'a_i_providers';
 
     /**
      * The attributes that are mass assignable.
@@ -23,14 +16,19 @@ class AIProvider extends Model
      */
     protected $fillable = [
         'user_id',
+        'ai_provider_id',
+        'name',
+        'model_id',
         'provider_type',
-        'api_key',
-        'model',
+        'description',
         'temperature',
         'max_tokens',
         'system_prompt',
-        'advanced_settings',
+        'capabilities',
+        'configuration',
+        'performance_metrics',
         'is_active',
+        'is_featured'
     ];
 
     /**
@@ -41,12 +39,15 @@ class AIProvider extends Model
     protected $casts = [
         'temperature' => 'float',
         'max_tokens' => 'integer',
-        'advanced_settings' => 'array',
+        'capabilities' => 'array',
+        'configuration' => 'array',
+        'performance_metrics' => 'array',
         'is_active' => 'boolean',
+        'is_featured' => 'boolean',
     ];
 
     /**
-     * Get the user that owns the AI provider.
+     * Get the user that owns the AI model.
      */
     public function user()
     {
@@ -54,18 +55,10 @@ class AIProvider extends Model
     }
 
     /**
-     * Get the widgets that use this AI provider.
+     * Get the AI provider associated with this model.
      */
-    public function widgets()
+    public function aiProvider()
     {
-        return $this->hasMany(Widget::class);
-    }
-
-    /**
-     * Get the AI models associated with this provider.
-     */
-    public function aiModels()
-    {
-        return $this->hasMany(AIModel::class);
+        return $this->belongsTo(AIProvider::class, 'ai_provider_id');
     }
 }

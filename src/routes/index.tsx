@@ -10,6 +10,7 @@ import RegisterPage from "@/pages/RegisterPage";
 import ProfilePage from "@/pages/ProfilePage";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import WidgetPage from "@/pages/WidgetPage";
+import AIModelManagement from "@/components/dashboard/AIModelManagement";
 
 const routes: RouteObject[] = [
   {
@@ -66,6 +67,16 @@ const routes: RouteObject[] = [
       <ProtectedRoute>
         <AdminPanelWrapper title="AI Provider Setup">
           <AIProviderSetup />
+        </AdminPanelWrapper>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: "/ai-models",
+    element: (
+      <ProtectedRoute>
+        <AdminPanelWrapper title="AI Model Management">
+          <AIModelManagement />
         </AdminPanelWrapper>
       </ProtectedRoute>
     ),

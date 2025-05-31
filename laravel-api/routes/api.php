@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\API\AIProviderController;
+use App\Http\Controllers\API\AIModelController;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\ChatController;
 use App\Http\Controllers\API\WidgetController;
@@ -26,22 +27,22 @@ Route::middleware('auth:sanctum')->group(function () {
     // User routes
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
-    
+
     // AI Provider routes
     Route::apiResource('ai-providers', AIProviderController::class);
     Route::post('ai-providers/test-connection', [AIProviderController::class, 'testConnection']);
     Route::post('ai-providers/generate-response', [AIProviderController::class, 'generateResponse']);
     Route::get('ai-providers/available', [AIProviderController::class, 'getAvailableProviders']);
-    
+
     // Widget routes
     Route::apiResource('widgets', WidgetController::class);
     Route::post('widgets/{widget}/generate-embed-code', [WidgetController::class, 'generateEmbedCode']);
-    
+
     // Chat routes
     Route::get('chats', [ChatController::class, 'index']);
     Route::get('chats/{sessionId}', [ChatController::class, 'getBySession']);
     Route::post('chats/send-message', [ChatController::class, 'sendMessage']);
-    
+
     // Analytics routes
     Route::get('analytics/widgets/{widgetId?}', [WidgetController::class, 'getAnalytics']);
     Route::get('analytics/conversations', [ChatController::class, 'getConversationAnalytics']);
