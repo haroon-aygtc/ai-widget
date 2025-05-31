@@ -3,19 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Chat;
 use App\Models\Message;
-use App\Models\Widget;
 use App\Models\ChatHistory;
+use App\Models\Widget;
 use App\Services\AI\AIService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Str;
 
 class ChatController extends Controller
 {
