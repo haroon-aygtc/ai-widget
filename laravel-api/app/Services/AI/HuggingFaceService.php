@@ -276,29 +276,51 @@ class HuggingFaceService
                 ];
             }
 
-            // HuggingFace doesn't have a models endpoint, return popular models
-            $models = [
-                [
-                    'id' => 'microsoft/DialoGPT-medium',
-                    'name' => 'DialoGPT Medium',
-                    'description' => 'Conversational AI model'
-                ],
-                [
-                    'id' => 'microsoft/DialoGPT-large',
-                    'name' => 'DialoGPT Large',
-                    'description' => 'Large conversational AI model'
-                ],
-                [
-                    'id' => 'facebook/blenderbot-400M-distill',
-                    'name' => 'BlenderBot 400M',
-                    'description' => 'Conversational AI model'
-                ],
-                [
-                    'id' => 'microsoft/GODEL-v1_1-large-seq2seq',
-                    'name' => 'GODEL Large',
-                    'description' => 'Goal-oriented dialog model'
+            // Try to validate API key by testing a known model
+            $testResponse = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(10)
+            ->post($this->apiUrl . '/microsoft/DialoGPT-medium', [
+                'inputs' => 'test',
+                'parameters' => [
+                    'max_new_tokens' => 1,
+                    'return_full_text' => false
                 ]
-            ];
+            ]);
+
+            if ($testResponse->successful() || $testResponse->status() === 503) {
+                // API key is valid (503 means model is loading, which is normal)
+                $models = [
+                    [
+                        'id' => 'microsoft/DialoGPT-medium',
+                        'name' => 'DialoGPT Medium',
+                        'description' => 'Conversational AI model'
+                    ],
+                    [
+                        'id' => 'microsoft/DialoGPT-large',
+                        'name' => 'DialoGPT Large',
+                        'description' => 'Large conversational AI model'
+                    ],
+                    [
+                        'id' => 'facebook/blenderbot-400M-distill',
+                        'name' => 'BlenderBot 400M',
+                        'description' => 'Conversational AI model'
+                    ],
+                    [
+                        'id' => 'microsoft/GODEL-v1_1-large-seq2seq',
+                        'name' => 'GODEL Large',
+                        'description' => 'Goal-oriented dialog model'
+                    ]
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to validate API key with HuggingFace',
+                    'models' => []
+                ];
+            }
 
             return [
                 'success' => true,

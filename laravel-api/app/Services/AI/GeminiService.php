@@ -3,14 +3,13 @@
 namespace App\Services\AI;
 
 use App\Models\AIProvider;
-use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\StreamedResponse;
 
 class GeminiService
 {
-    protected string $baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
+    protected string $apiUrl = 'https://generativelanguage.googleapis.com/v1beta';
     protected AIProvider $provider;
 
     public function __construct(AIProvider $provider)
@@ -66,7 +65,7 @@ class GeminiService
                     'Content-Type' => 'application/json',
                 ])
                 ->post(
-                    $this->baseUrl . '/models/' . $model . ':generateContent?key=' . $apiKey,
+                    $this->apiUrl . '/models/' . $model . ':generateContent?key=' . $apiKey,
                     $payload
                 );
 
@@ -262,36 +261,86 @@ class GeminiService
                 ];
             }
 
-            $response = Http::timeout(10)
-                ->get($this->baseUrl . '/models?key=' . $apiKey);
+            \Log::info('Fetching Gemini available models', [
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 4) . '...'
+            ]);
+
+            // The correct endpoint for Gemini models
+            $modelUrl = 'https://generativelanguage.googleapis.com/v1/models?key=' . $apiKey;
+
+            $response = Http::timeout(10)->get($modelUrl);
+
+            \Log::info('Gemini models response', [
+                'status' => $response->status(),
+                'success' => $response->successful(),
+                'body_length' => strlen($response->body())
+            ]);
 
             if ($response->successful()) {
                 $data = $response->json();
                 $models = [];
 
-                foreach ($data['models'] as $model) {
-                    $models[] = [
-                        'id' => str_replace('models/', '', $model['name']),
-                        'name' => str_replace('models/', '', $model['name']),
-                        'description' => $model['description'] ?? 'Gemini model'
-                    ];
+                if (isset($data['models']) && is_array($data['models'])) {
+                    foreach ($data['models'] as $model) {
+                        if (isset($model['name'])) {
+                            // Extract only the model name without the prefix
+                            $modelId = str_replace('models/', '', $model['name']);
+
+                            // Only include gemini models
+                            if (strpos($modelId, 'gemini') !== false) {
+                                $models[] = [
+                                    'id' => $modelId,
+                                    'name' => $modelId,
+                                    'description' => $model['description'] ?? 'Gemini model'
+                                ];
+                            }
+                        }
+                    }
+                } else {
+                    \Log::warning('Unexpected Gemini API response format', [
+                        'response' => $data
+                    ]);
+                }
+
+                if (empty($models)) {
+                    \Log::warning('No Gemini models found or all were filtered out from API response', [
+                        'response' => $data
+                    ]);
                 }
 
                 return [
-                    'success' => true,
+                    'success' => !empty($models),
+                    'message' => empty($models) ? 'No Gemini models found in API response' : '',
                     'models' => $models
                 ];
             } else {
+                $errorData = $response->json();
+                $errorMessage = isset($errorData['error']['message'])
+                    ? $errorData['error']['message']
+                    : 'Failed to fetch models from Gemini API';
+
+                \Log::error('Failed to fetch Gemini models', [
+                    'status' => $response->status(),
+                    'error' => $errorMessage,
+                    'body' => $response->body()
+                ]);
+
                 return [
                     'success' => false,
-                    'message' => 'Failed to fetch models',
+                    'message' => 'API error: ' . $errorMessage,
                     'models' => []
                 ];
             }
         } catch (\Exception $e) {
+            \Log::error('Exception while fetching Gemini models', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return [
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => 'Error: ' . $e->getMessage(),
                 'models' => []
             ];
         }

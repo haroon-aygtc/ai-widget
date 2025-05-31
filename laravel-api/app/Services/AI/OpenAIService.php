@@ -283,6 +283,11 @@ class OpenAIService
                 ];
             }
 
+            \Log::info('Fetching OpenAI available models', [
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 5) . '...'
+            ]);
+
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $apiKey,
                 'Content-Type' => 'application/json',
@@ -290,33 +295,76 @@ class OpenAIService
             ->timeout(10)
             ->get('https://api.openai.com/v1/models');
 
+            \Log::info('OpenAI models response', [
+                'status' => $response->status(),
+                'success' => $response->successful(),
+                'body_length' => strlen($response->body())
+            ]);
+
             if ($response->successful()) {
                 $data = $response->json();
                 $models = [];
 
-                foreach ($data['data'] as $model) {
-                    $models[] = [
-                        'id' => $model['id'],
-                        'name' => $model['id'],
-                        'description' => 'OpenAI model'
-                    ];
+                if (isset($data['data']) && is_array($data['data'])) {
+                    foreach ($data['data'] as $model) {
+                        // Filter to include only chat models
+                        if (isset($model['id']) && (
+                            strpos($model['id'], 'gpt-') === 0 ||
+                            strpos($model['id'], 'text-') === 0 ||
+                            strpos($model['id'], 'davinci') !== false ||
+                            strpos($model['id'], 'o-') !== false)) {
+
+                            $models[] = [
+                                'id' => $model['id'],
+                                'name' => $model['id'],
+                                'description' => isset($model['description']) ? $model['description'] : 'OpenAI model'
+                            ];
+                        }
+                    }
+                } else {
+                    \Log::warning('Unexpected OpenAI API response format', [
+                        'response' => $data
+                    ]);
+                }
+
+                if (empty($models)) {
+                    \Log::warning('No OpenAI models found or all were filtered out', [
+                        'response' => $data
+                    ]);
                 }
 
                 return [
-                    'success' => true,
+                    'success' => !empty($models),
+                    'message' => empty($models) ? 'No suitable models found in API response' : '',
                     'models' => $models
                 ];
             } else {
+                $errorData = $response->json();
+                $errorMessage = isset($errorData['error']['message'])
+                    ? $errorData['error']['message']
+                    : 'Failed to fetch models from OpenAI API';
+
+                \Log::error('Failed to fetch OpenAI models', [
+                    'status' => $response->status(),
+                    'error' => $errorMessage,
+                    'body' => $response->body()
+                ]);
+
                 return [
                     'success' => false,
-                    'message' => 'Failed to fetch models',
+                    'message' => 'API error: ' . $errorMessage,
                     'models' => []
                 ];
             }
         } catch (\Exception $e) {
+            \Log::error('Exception while fetching OpenAI models', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return [
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => 'Error: ' . $e->getMessage(),
                 'models' => []
             ];
         }

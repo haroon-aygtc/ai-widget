@@ -79,30 +79,27 @@ class AIServiceFactory
         return [
             'openai' => [
                 'name' => 'OpenAI',
-                'description' => 'GPT-4, GPT-3.5 Turbo models',
+                'description' => 'GPT models with dynamic model discovery',
                 'logo' => '🤖',
                 'supported_features' => ['chat', 'streaming', 'function_calling'],
-                'models' => ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
                 'api_endpoint' => 'https://api.openai.com/v1',
                 'documentation_url' => 'https://platform.openai.com/docs',
                 'pricing_info' => 'Pay per token usage'
             ],
             'claude' => [
                 'name' => 'Anthropic Claude',
-                'description' => 'Claude 3 Opus, Sonnet, Haiku',
+                'description' => 'Claude models with dynamic model discovery',
                 'logo' => '🧠',
                 'supported_features' => ['chat', 'streaming', 'long_context'],
-                'models' => ['claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
                 'api_endpoint' => 'https://api.anthropic.com/v1',
                 'documentation_url' => 'https://docs.anthropic.com',
                 'pricing_info' => 'Pay per token usage'
             ],
             'gemini' => [
                 'name' => 'Google Gemini',
-                'description' => 'Gemini Pro, Ultra models',
+                'description' => 'Gemini models with dynamic model discovery',
                 'logo' => '🌀',
                 'supported_features' => ['chat', 'streaming', 'multimodal'],
-                'models' => ['gemini-pro', 'gemini-pro-vision', 'gemini-ultra'],
                 'api_endpoint' => 'https://generativelanguage.googleapis.com/v1',
                 'documentation_url' => 'https://ai.google.dev/docs',
                 'pricing_info' => 'Free tier available'
@@ -185,7 +182,7 @@ class AIServiceFactory
             $tempProvider = new AIProvider([
                 'provider_type' => $providerType,
                 'api_key' => $apiKey,
-                'model' => $config['model'] ?? self::getDefaultModel($providerType),
+                'model' => $config['model'] ?? 'dynamic',
                 'temperature' => $config['temperature'] ?? 0.7,
                 'max_tokens' => $config['max_tokens'] ?? 100,
                 'system_prompt' => 'You are a helpful assistant.',
@@ -224,6 +221,12 @@ class AIServiceFactory
     public static function getAvailableModels(string $providerType, string $apiKey): array
     {
         try {
+            \Log::info('Fetching models for provider', [
+                'provider_type' => $providerType,
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 5) . '...'
+            ]);
+
             // Create a temporary provider instance
             $tempProvider = new AIProvider([
                 'provider_type' => $providerType,
@@ -239,11 +242,20 @@ class AIServiceFactory
             $service = self::create($tempProvider);
 
             // Get available models
-            return $service->getAvailableModels();
+            $result = $service->getAvailableModels();
+
+            // Pass through the result from the service without modification
+            return $result;
         } catch (\Exception $e) {
+            \Log::error('Failed to get models for provider', [
+                'provider_type' => $providerType,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return [
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => 'Error fetching models: ' . $e->getMessage(),
                 'models' => []
             ];
         }

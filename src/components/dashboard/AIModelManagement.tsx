@@ -93,6 +93,8 @@ const AIModelManagement: React.FC = () => {
   const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelSearchQuery, setModelSearchQuery] = useState("");
+  const [modelOptions, setModelOptions] = useState<DiscoveredModel[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("");
 
   // Model management state
   const [configuredModels, setConfiguredModels] = useState<AIModel[]>([]);
@@ -120,9 +122,9 @@ const AIModelManagement: React.FC = () => {
           logo: config.logo || "🤖",
           description: config.description || `${config.name || id} AI Provider`,
           status: "not_configured" as const,
-          models_count: config.models?.length || 0,
-          default_model: config.models?.[0] || "default-model",
-          available_models: config.models || [],
+          models_count: 0, // Will be fetched dynamically
+          default_model: "dynamic", // Will be set dynamically
+          available_models: [], // Will be fetched dynamically
           supported_features: config.supported_features || [],
         } as AvailableProvider)
       );
@@ -258,38 +260,113 @@ const AIModelManagement: React.FC = () => {
       // Clean the API key - remove Bearer prefix if accidentally included
       const cleanedApiKey = apiKey.trim().replace(/^Bearer\s+/i, '');
 
-      const response = await apiClient.post("/ai-models/fetch-available", {
-        provider: providerType,
+      // Updated endpoint based on API changes
+      const response = await apiClient.post("/ai-providers/models", {
+        provider_type: providerType,
         api_key: cleanedApiKey,
       });
 
-      if (response.data?.success && response.data.models) {
-        const models = response.data.models.map((model: any) => ({
-          id: typeof model === "string" ? model : model.id || model.name,
-          name: typeof model === "string" ? model : model.name || model.id,
+      console.log("Models fetch response:", response.data);
+
+      if (response.data?.success && Array.isArray(response.data?.data?.models)) {
+        // API successfully returned models
+        const models = response.data.data.models.map((model: any) => ({
+          id: typeof model === 'string' ? model : model.id,
+          name: typeof model === 'string' ? model : (model.name || model.id),
           provider: selectedProvider?.name || providerType,
-          description: typeof model === "object" ? model.description : undefined,
-          capabilities: typeof model === "object" ? model.capabilities : undefined,
-          context_length: typeof model === "object" ? model.context_length : undefined,
-          pricing: typeof model === "object" ? model.pricing : undefined,
+          description: typeof model === 'string' ? '' : (model.description || '')
         }));
 
-        setDiscoveredModels(models);
-
-        // Auto-advance to model discovery tab
         if (models.length > 0) {
+          setDiscoveredModels(models);
+          setModelOptions(models);
+
+          // Set the first model as selected
+          const firstModel = models[0];
+          setSelectedModel(firstModel.id);
+
+          // Make sure provider is set
+          setSelectedProvider(availableProviders.find(p => p.id === providerType) || null);
+
+          // Navigate to discovery tab
           setActiveTab("discovery");
+        } else {
+          // API returned success but no models
+          toast({
+            title: "No models available",
+            description: "The provider API returned successfully but no models were found. Please try again later.",
+            variant: "destructive",
+          });
+          setDiscoveredModels([]);
+          setModelOptions([]);
         }
+      } else {
+        // API returned an error or no models
+        const errorMessage = response.data?.message || "Failed to fetch available models";
+
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+
+        setDiscoveredModels([]);
+        setModelOptions([]);
+
+        console.error("Failed to fetch models:", errorMessage);
       }
     } catch (error) {
       console.error("Failed to fetch models for provider:", error);
+
       toast({
         title: "Error",
-        description: "Failed to fetch available models",
+        description: error instanceof Error ? error.message : "Failed to fetch models from provider",
         variant: "destructive",
       });
+
+      setDiscoveredModels([]);
+      setModelOptions([]);
     } finally {
       setModelsLoading(false);
+    }
+  };
+
+  // Helper function to get fallback models for different providers
+  const getFallbackModels = (providerType: string) => {
+    switch (providerType) {
+      case 'openai':
+        return [
+          { id: 'gpt-4o', name: 'GPT-4o', description: 'Latest GPT-4 model' },
+          { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Powerful model with good balance' },
+          { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and cost effective' },
+        ];
+      case 'claude':
+        return [
+          { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', description: 'Most intelligent model' },
+          { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: 'Powerful model for complex tasks' },
+          { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: 'Balance of intelligence and speed' },
+          { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Fast and cost effective' },
+        ];
+      case 'groq':
+        return [
+          { id: 'llama3-70b-8192', name: 'Llama-3 70B', description: 'Llama 3 70B with 8K context' },
+          { id: 'llama3-8b-8192', name: 'Llama-3 8B', description: 'Llama 3 8B with 8K context' },
+          { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', description: 'Mixtral 8x7B with 32K context' },
+          { id: 'gemma-7b-it', name: 'Gemma 7B', description: 'Google Gemma 7B' },
+        ];
+      case 'gemini':
+        return [
+          { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', description: 'Google Gemini Pro model' },
+          { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', description: 'Fast and efficient model' },
+        ];
+      case 'mistral':
+        return [
+          { id: 'mistral-large-latest', name: 'Mistral Large', description: 'Mistral Large model' },
+          { id: 'mistral-medium-latest', name: 'Mistral Medium', description: 'Mistral Medium model' },
+          { id: 'mistral-small-latest', name: 'Mistral Small', description: 'Mistral Small model' },
+        ];
+      default:
+        return [];
     }
   };
 

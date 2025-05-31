@@ -253,6 +253,20 @@ class GroqService
                 'api_key_prefix' => substr($apiKey, 0, 4) . '...'
             ]);
 
+            // If model is "dynamic", get available models first
+            if ($this->provider->model === 'dynamic') {
+                $modelsResult = $this->getAvailableModels();
+                if ($modelsResult['success'] && !empty($modelsResult['models'])) {
+                    $this->provider->model = $modelsResult['models'][0]['id'];
+                } else {
+                    return [
+                        'success' => false,
+                        'message' => 'Could not fetch available models',
+                        'provider' => 'groq'
+                    ];
+                }
+            }
+
             // Make a simple test request
             $testMessage = 'Hello, this is a test message. Please respond with "Connection successful!"';
             $result = $this->generateResponse($testMessage, []);
@@ -324,40 +338,83 @@ class GroqService
                 ];
             }
 
+            \Log::info('Fetching Groq available models', [
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 4) . '...'
+            ]);
+
+            // The Groq API endpoint for models is /models
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $apiKey,
                 'Content-Type' => 'application/json',
             ])
             ->timeout(10)
-            ->get($this->apiUrl . '/models');
+            ->get('https://api.groq.com/v1/models');
+
+            \Log::info('Groq models response', [
+                'status' => $response->status(),
+                'success' => $response->successful(),
+                'body_length' => strlen($response->body())
+            ]);
 
             if ($response->successful()) {
                 $data = $response->json();
                 $models = [];
 
-                foreach ($data['data'] as $model) {
-                    $models[] = [
-                        'id' => $model['id'],
-                        'name' => $model['id'],
-                        'description' => 'Groq model'
-                    ];
+                if (isset($data['data']) && is_array($data['data'])) {
+                    foreach ($data['data'] as $model) {
+                        if (isset($model['id'])) {
+                            $models[] = [
+                                'id' => $model['id'],
+                                'name' => $model['id'],
+                                'description' => isset($model['description']) ? $model['description'] : 'Groq model'
+                            ];
+                        }
+                    }
+                } else {
+                    \Log::warning('Unexpected Groq API response format', [
+                        'response' => $data
+                    ]);
+                }
+
+                if (empty($models)) {
+                    \Log::warning('No Groq models found in API response', [
+                        'response' => $data
+                    ]);
                 }
 
                 return [
-                    'success' => true,
+                    'success' => !empty($models),
+                    'message' => empty($models) ? 'No models returned from API' : '',
                     'models' => $models
                 ];
             } else {
+                $errorData = $response->json();
+                $errorMessage = isset($errorData['error']['message'])
+                    ? $errorData['error']['message']
+                    : 'Failed to fetch models from Groq API';
+
+                \Log::error('Failed to fetch Groq models', [
+                    'status' => $response->status(),
+                    'error' => $errorMessage,
+                    'body' => $response->body()
+                ]);
+
                 return [
                     'success' => false,
-                    'message' => 'Failed to fetch models',
+                    'message' => 'API error: ' . $errorMessage,
                     'models' => []
                 ];
             }
         } catch (\Exception $e) {
+            \Log::error('Exception while fetching Groq models', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return [
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => 'Error: ' . $e->getMessage(),
                 'models' => []
             ];
         }

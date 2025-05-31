@@ -30,7 +30,7 @@ class AIProviderSeeder extends Seeder
                 ],
                 [
                     'name' => $config['name'],
-                    'model' => $this->getDefaultModel($type),
+                    'model' => 'dynamic', // Will be set dynamically from API
                     'api_key' => $this->getEnvApiKey($type), // Will be null if not set
                     'temperature' => 0.7,
                     'max_tokens' => 2048,
@@ -45,24 +45,7 @@ class AIProviderSeeder extends Seeder
         $this->command->info('Configure API keys in the admin panel to activate providers.');
     }
 
-    /**
-     * Get default model for a provider type.
-     */
-    private function getDefaultModel(string $type): string
-    {
-        return match ($type) {
-            'openai' => 'gpt-4o',
-            'claude' => 'claude-3-sonnet-20240229',
-            'gemini' => 'gemini-1.5-pro',
-            'mistral' => 'mistral-large-latest',
-            'groq' => 'llama3-70b-8192',
-            'deepseek' => 'deepseek-chat',
-            'huggingface' => 'meta-llama/Llama-2-70b-chat-hf',
-            'grok' => 'grok-1',
-            'openrouter' => 'openai/gpt-4o',
-            default => 'gpt-4o'
-        };
-    }
+
 
     /**
      * Get default advanced settings for a provider type.

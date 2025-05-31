@@ -25,7 +25,7 @@ class AIProviderFactory extends Factory
             'user_id' => User::factory(),
             'provider_type' => $providerType,
             'api_key' => Crypt::encryptString('test-api-key-' . $this->faker->uuid()),
-            'model' => $this->getDefaultModel($providerType),
+            'model' => 'dynamic', // Will be set dynamically from API
             'temperature' => $this->faker->randomFloat(2, 0, 1),
             'max_tokens' => $this->faker->numberBetween(1000, 4000),
             'system_prompt' => $this->faker->optional()->paragraph(),
@@ -38,19 +38,7 @@ class AIProviderFactory extends Factory
         ];
     }
 
-    /**
-     * Get default model for provider type.
-     */
-    private function getDefaultModel(string $providerType): string
-    {
-        return match ($providerType) {
-            'openai' => 'gpt-3.5-turbo',
-            'gemini' => 'gemini-1.5-flash',
-            'claude' => 'claude-3-haiku-20240307',
-            'mistral' => 'mistral-small-latest',
-            default => 'gpt-3.5-turbo',
-        };
-    }
+
 
     /**
      * Indicate that the provider is active.

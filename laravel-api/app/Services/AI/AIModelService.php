@@ -29,8 +29,8 @@ class AIModelService
         }
 
         try {
-            // Use default models for now - individual providers can be enhanced later
-            $models = $this->getDefaultModelsForProvider($provider);
+            // Use dynamic model fetching from provider APIs
+            $models = AIServiceFactory::getAvailableModels($provider, $apiKey);
 
             // Cache the results
             Cache::put($cacheKey, $models, 3600);

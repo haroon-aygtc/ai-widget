@@ -3,14 +3,13 @@
 namespace App\Services\AI;
 
 use App\Models\AIProvider;
-use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\StreamedResponse;
 
 class ClaudeService
 {
-    protected string $baseUrl = 'https://api.anthropic.com/v1';
+    protected string $apiUrl = 'https://api.anthropic.com/v1';
     protected AIProvider $provider;
 
     public function __construct(AIProvider $provider)
@@ -99,7 +98,7 @@ class ClaudeService
                     'Content-Type' => 'application/json',
                     'anthropic-version' => '2023-06-01',
                 ])
-                ->post($this->baseUrl . '/messages', $payload);
+                ->post($this->apiUrl . '/messages', $payload);
 
             if (!$response->successful()) {
                 \Log::error('Claude API error response', [
@@ -278,7 +277,7 @@ class ClaudeService
                         'Content-Type' => 'application/json',
                         'anthropic-version' => '2023-06-01',
                     ])
-                    ->post($this->baseUrl . '/messages', $payload);
+                    ->post($this->apiUrl . '/messages', $payload);
 
                 if ($response->successful()) {
                     $body = $response->body();
@@ -325,43 +324,103 @@ class ClaudeService
                 ];
             }
 
-            // Claude doesn't have a models endpoint, return known models
-            $models = [
-                [
-                    'id' => 'claude-3-5-sonnet-20241022',
-                    'name' => 'Claude 3.5 Sonnet',
-                    'description' => 'Most intelligent model'
-                ],
-                [
-                    'id' => 'claude-3-5-haiku-20241022',
-                    'name' => 'Claude 3.5 Haiku',
-                    'description' => 'Fastest model'
-                ],
-                [
-                    'id' => 'claude-3-opus-20240229',
-                    'name' => 'Claude 3 Opus',
-                    'description' => 'Powerful model for highly complex tasks'
-                ],
-                [
-                    'id' => 'claude-3-sonnet-20240229',
-                    'name' => 'Claude 3 Sonnet',
-                    'description' => 'Balance of intelligence and speed'
-                ],
-                [
-                    'id' => 'claude-3-haiku-20240307',
-                    'name' => 'Claude 3 Haiku',
-                    'description' => 'Fast and cost-effective'
+            \Log::info('Fetching Claude available models', [
+                'api_key_length' => strlen($apiKey),
+                'api_key_prefix' => substr($apiKey, 0, 5) . '...'
+            ]);
+
+            // Claude API doesn't have a direct models list endpoint
+            // We can try to fetch from a future endpoint when it becomes available
+            $endpointUrl = $this->apiUrl . '/models';
+
+            // Make a test request to see if the models endpoint exists now
+            $modelListResponse = Http::withHeaders([
+                'x-api-key' => $apiKey,
+                'Content-Type' => 'application/json',
+                'anthropic-version' => '2023-06-01'
+            ])
+            ->timeout(5)
+            ->get($endpointUrl);
+
+            if ($modelListResponse->successful() && isset($modelListResponse->json()['data'])) {
+                $data = $modelListResponse->json();
+                $models = [];
+
+                foreach ($data['data'] as $model) {
+                    $models[] = [
+                        'id' => $model['id'],
+                        'name' => isset($model['name']) ? $model['name'] : $model['id'],
+                        'description' => isset($model['description']) ? $model['description'] : 'Claude model'
+                    ];
+                }
+
+                \Log::info('Successfully fetched Claude models from API', [
+                    'model_count' => count($models)
+                ]);
+
+                return [
+                    'success' => true,
+                    'models' => $models
+                ];
+            }
+
+            // If direct model listing fails, try to validate the API key with a simple request
+            // This confirms the API key is valid even if we can't list models
+            $response = Http::withHeaders([
+                'x-api-key' => $apiKey,
+                'Content-Type' => 'application/json',
+                'anthropic-version' => '2023-06-01'
+            ])
+            ->timeout(10)
+            ->post($this->apiUrl . '/messages', [
+                'model' => 'claude-3-haiku-20240307', // Use a known model to test
+                'max_tokens' => 1,
+                'messages' => [
+                    ['role' => 'user', 'content' => 'test']
                 ]
-            ];
+            ]);
+
+            \Log::info('Claude API test response', [
+                'status' => $response->status(),
+                'success' => $response->successful(),
+                'body_length' => strlen($response->body())
+            ]);
+
+            if ($response->successful()) {
+                // Only return that validation was successful, but without models
+                // The UI layer should handle this case appropriately
+                return [
+                    'success' => true,
+                    'message' => 'API key is valid, but model listing is not available',
+                    'models' => []
+                ];
+            } else {
+                $errorData = $response->json();
+                $errorMessage = isset($errorData['error']['message'])
+                    ? $errorData['error']['message']
+                    : 'Failed to validate API key with Claude';
+
+                \Log::error('Failed to validate Claude API key', [
+                    'status' => $response->status(),
+                    'error' => $errorMessage,
+                    'body' => $response->body()
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'API validation failed: ' . $errorMessage,
+                    'models' => []
+                ];
+            }
+        } catch (\Exception $e) {
+            \Log::error('Exception while fetching Claude models', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
 
             return [
-                'success' => true,
-                'models' => $models
-            ];
-        } catch (\Exception $e) {
-            return [
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => 'Error: ' . $e->getMessage(),
                 'models' => []
             ];
         }
