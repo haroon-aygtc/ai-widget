@@ -2,6 +2,7 @@
 
 namespace App\Services\AI;
 
+use App\Models\AIProvider;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -10,55 +11,74 @@ use Illuminate\Http\StreamedResponse;
 class MistralService
 {
     protected string $baseUrl = 'https://api.mistral.ai/v1';
-    protected array $defaultConfig = [
-        'model' => 'mistral-small-latest',
-        'temperature' => 0.7,
-        'maxTokens' => 2048,
-        'topP' => 1.0,
-    ];
+    protected AIProvider $provider;
+
+    public function __construct(AIProvider $provider)
+    {
+        $this->provider = $provider;
+    }
 
     /**
      * Generate response from Mistral API.
      *
      * @param string $message
-     * @param array $config
+     * @param array $context
      * @return array
      * @throws \Exception
      */
-    public function generateResponse(string $message, array $config = []): array
+    public function generateResponse(string $message, array $context = []): array
     {
         $startTime = microtime(true);
 
         try {
-            $config = array_merge($this->defaultConfig, $config);
+            // Use provider configuration
+            $apiKey = $this->provider->api_key;
+            $model = $this->provider->model;
+            $temperature = $this->provider->temperature;
+            $maxTokens = $this->provider->max_tokens;
+            $systemPrompt = $this->provider->system_prompt;
+            $advancedSettings = $this->provider->advanced_settings ?? [];
+            $topP = $advancedSettings['top_p'] ?? 1.0;
 
-            if (empty($config['apiKey'])) {
+            if (!$apiKey) {
                 throw new \Exception('Mistral API key is required');
             }
 
             $messages = [
                 [
                     'role' => 'system',
-                    'content' => $config['systemPrompt'] ?? 'You are a helpful assistant.'
-                ],
-                [
-                    'role' => 'user',
-                    'content' => $message
+                    'content' => $systemPrompt ?? 'You are a helpful assistant.'
                 ]
             ];
 
+            // Add conversation context if provided
+            if (!empty($context['conversation_history'])) {
+                foreach ($context['conversation_history'] as $msg) {
+                    $messages[] = [
+                        'role' => $msg['role'] ?? 'user',
+                        'content' => $msg['content']
+                    ];
+                }
+            }
+
+            // Add current message
+            $messages[] = [
+                'role' => 'user',
+                'content' => $message
+            ];
+
             $payload = [
-                'model' => $config['model'],
+                'model' => $model,
                 'messages' => $messages,
-                'temperature' => $config['temperature'],
-                'max_tokens' => $config['maxTokens'],
-                'top_p' => $config['topP'],
+                'temperature' => $temperature,
+                'max_tokens' => $maxTokens,
+                'top_p' => $topP,
                 'stream' => false,
             ];
 
             $response = Http::timeout(30)
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $config['apiKey'],
+                    'Authorization' => 'Bearer ' . $apiKey,
                     'Content-Type' => 'application/json',
                 ])
                 ->post($this->baseUrl . '/chat/completions', $payload);
@@ -78,26 +98,30 @@ class MistralService
 
             return [
                 'success' => true,
-                'response' => $responseText,
-                'model' => $data['model'] ?? $config['model'],
+                'content' => $responseText,
+                'model' => $data['model'] ?? $model,
                 'response_time' => $responseTime,
-                'token_usage' => [
+                'usage' => [
                     'prompt_tokens' => $data['usage']['prompt_tokens'] ?? null,
                     'completion_tokens' => $data['usage']['completion_tokens'] ?? null,
                     'total_tokens' => $data['usage']['total_tokens'] ?? null,
                 ],
-                'finish_reason' => $data['choices'][0]['finish_reason'] ?? 'stop'
+                'finish_reason' => $data['choices'][0]['finish_reason'] ?? 'stop',
+                'provider' => 'mistral',
+                'provider_id' => $this->provider->id
             ];
         } catch (\Exception $e) {
             Log::error('Mistral API Error', [
                 'message' => $e->getMessage(),
-                'config' => array_filter($config, fn($key) => $key !== 'apiKey', ARRAY_FILTER_USE_KEY)
+                'provider_id' => $this->provider->id
             ]);
 
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
-                'response_time' => microtime(true) - $startTime
+                'response_time' => microtime(true) - $startTime,
+                'provider' => 'mistral',
+                'provider_id' => $this->provider->id
             ];
         }
     }
@@ -111,13 +135,13 @@ class MistralService
     public function testConnection(array $config): array
     {
         try {
-            $result = $this->generateResponse('Hello, this is a test message.', $config);
+            $result = $this->generateResponse('Hello, this is a test message.', []);
 
             return [
                 'success' => $result['success'],
                 'message' => $result['success'] ? 'Connection successful' : $result['message'],
                 'provider' => 'mistral',
-                'model' => $config['model'] ?? $this->defaultConfig['model'],
+                'model' => $this->provider->model,
                 'response_time' => $result['response_time'] ?? null
             ];
         } catch (\Exception $e) {
@@ -133,42 +157,61 @@ class MistralService
      * Stream response from Mistral API.
      *
      * @param string $message
-     * @param array $config
+     * @param array $context
      * @return StreamedResponse
      */
-    public function streamResponse(string $message, array $config = []): StreamedResponse
+    public function streamResponse(string $message, array $context = []): StreamedResponse
     {
-        return response()->stream(function () use ($message, $config) {
+        return response()->stream(function () use ($message, $context) {
             try {
-                $config = array_merge($this->defaultConfig, $config);
+                // Use provider configuration
+                $apiKey = $this->provider->api_key;
+                $model = $this->provider->model;
+                $temperature = $this->provider->temperature;
+                $maxTokens = $this->provider->max_tokens;
+                $systemPrompt = $this->provider->system_prompt;
+                $advancedSettings = $this->provider->advanced_settings ?? [];
+                $topP = $advancedSettings['top_p'] ?? 1.0;
 
-                if (empty($config['apiKey'])) {
+                if (!$apiKey) {
                     throw new \Exception('Mistral API key is required');
                 }
 
                 $messages = [
                     [
                         'role' => 'system',
-                        'content' => $config['systemPrompt'] ?? 'You are a helpful assistant.'
-                    ],
-                    [
-                        'role' => 'user',
-                        'content' => $message
+                        'content' => $systemPrompt ?? 'You are a helpful assistant.'
                     ]
                 ];
 
+                // Add conversation context if provided
+                if (!empty($context['conversation_history'])) {
+                    foreach ($context['conversation_history'] as $msg) {
+                        $messages[] = [
+                            'role' => $msg['role'] ?? 'user',
+                            'content' => $msg['content']
+                        ];
+                    }
+                }
+
+                // Add current message
+                $messages[] = [
+                    'role' => 'user',
+                    'content' => $message
+                ];
+
                 $payload = [
-                    'model' => $config['model'],
+                    'model' => $model,
                     'messages' => $messages,
-                    'temperature' => $config['temperature'],
-                    'max_tokens' => $config['maxTokens'],
-                    'top_p' => $config['topP'],
+                    'temperature' => $temperature,
+                    'max_tokens' => $maxTokens,
+                    'top_p' => $topP,
                     'stream' => true,
                 ];
 
                 $response = Http::timeout(60)
                     ->withHeaders([
-                        'Authorization' => 'Bearer ' . $config['apiKey'],
+                        'Authorization' => 'Bearer ' . $apiKey,
                         'Content-Type' => 'application/json',
                     ])
                     ->post($this->baseUrl . '/chat/completions', $payload);

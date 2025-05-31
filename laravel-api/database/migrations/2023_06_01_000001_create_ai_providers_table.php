@@ -15,7 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('provider_type'); // openai, gemini, claude, mistral, etc.
-            $table->text('api_key'); // encrypted
+            $table->string('name'); // Display name for the provider
+            $table->text('api_key')->nullable(); // encrypted
             $table->string('model');
             $table->float('temperature')->default(0.7);
             $table->integer('max_tokens')->default(2048);

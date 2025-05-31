@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('ai_models', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->foreignId('ai_provider_id')->nullable()->constrained('a_i_providers')->onDelete('set null');
+            $table->foreignId('ai_provider_id')->nullable()->constrained('ai_providers')->onDelete('set null');
             $table->string('name');
             $table->string('model_id')->comment('The actual model identifier used by the provider');
             $table->string('provider_type');
