@@ -4,6 +4,14 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import DashboardPage from "./components/dashboard/DashboardPage";
+import AdminPanelWrapper from "./components/dashboard/AdminPanelWrapper";
+import WidgetBuilder from "./components/dashboard/WidgetBuilder";
+import AIProviderSetup from "./components/dashboard/AIProviderSetup";
+import AnalyticsDashboard from "./components/dashboard/AnalyticsDashboard";
+import AIModelManagement from "./components/dashboard/AIModelManagement";
+import WidgetList from "./components/dashboard/WidgetList";
+import UserManagement from "./components/dashboard/UserManagement";
+import Settings from "./components/dashboard/Settings";
 import ProfilePage from "./pages/ProfilePage";
 import WidgetPage from "./pages/WidgetPage";
 import { ThemeProvider } from "./components/theme-provider";
@@ -66,14 +74,90 @@ function App() {
         <Route path="/" element={<LoginPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+
+        {/* Dashboard Routes */}
         <Route
-          path="/dashboard/*"
+          path="/dashboard"
           element={
             <ProtectedRoute>
-              <DashboardPage />
+              <AdminPanelWrapper title="Dashboard">
+                <DashboardPage />
+              </AdminPanelWrapper>
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/widget-builder"
+          element={
+            <ProtectedRoute>
+              <AdminPanelWrapper title="Widget Builder">
+                <WidgetBuilder />
+              </AdminPanelWrapper>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/widgets"
+          element={
+            <ProtectedRoute>
+              <AdminPanelWrapper title="Widget Library">
+                <WidgetList />
+              </AdminPanelWrapper>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/ai-providers"
+          element={
+            <ProtectedRoute>
+              <AdminPanelWrapper title="AI Provider Setup">
+                <AIProviderSetup />
+              </AdminPanelWrapper>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/ai-models"
+          element={
+            <ProtectedRoute>
+              <AdminPanelWrapper title="AI Model Management">
+                <AIModelManagement />
+              </AdminPanelWrapper>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <ProtectedRoute>
+              <AdminPanelWrapper title="Analytics Dashboard">
+                <AnalyticsDashboard />
+              </AdminPanelWrapper>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <ProtectedRoute requireAdmin={true}>
+              <AdminPanelWrapper title="User Management">
+                <UserManagement />
+              </AdminPanelWrapper>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <AdminPanelWrapper title="Settings">
+                <Settings />
+              </AdminPanelWrapper>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Other Routes */}
         <Route
           path="/profile"
           element={

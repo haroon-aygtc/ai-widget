@@ -25,6 +25,7 @@ import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
 import { aiModelApi } from "@/lib/models-api";
 import { aiProviderApi } from "@/lib/api";
 import {
@@ -76,6 +77,8 @@ interface ModelOption {
   name: string;
   description?: string;
 }
+
+type ViewMode = 'list' | 'create' | 'edit' | 'test';
 
 const AIModelManagement: React.FC = () => {
   const { toast } = useToast();

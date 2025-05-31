@@ -1,45 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 import api, { userApi } from "@/lib/api";
 import {
-  Search,
   Plus,
-  Trash2,
-  Edit,
-  UserCheck,
-  UserX,
-  Shield,
   User,
-  Loader2,
+  Users,
 } from "lucide-react";
+
+import LoadingSpinner from "@/components/shared/loading-spinner";
+import EmptyState from "@/components/shared/empty-state";
+import Pagination from "@/components/shared/pagination";
+import UserCard from "@/components/user-management/user-card";
+import UserFilters from "@/components/user-management/user-filters";
+import UserForm from "@/components/user-management/user-form";
+import UserDetails from "@/components/user-management/user-details";
 
 interface User {
   id: string;
@@ -53,26 +28,36 @@ interface User {
   email_verified_at?: string;
 }
 
+interface FormData {
+  name: string;
+  email: string;
+  password: string;
+  role: "admin" | "user";
+  status: "active" | "inactive";
+}
+
+type ViewMode = 'list' | 'create' | 'edit' | 'view';
+
 const UserManagement: React.FC = () => {
   const { toast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     name: "",
     email: "",
     password: "",
-    role: "user" as "admin" | "user",
-    status: "active" as "active" | "inactive",
+    role: "user",
+    status: "active",
   });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -93,8 +78,8 @@ const UserManagement: React.FC = () => {
       };
 
       if (searchQuery) params.search = searchQuery;
-      if (roleFilter) params.role = roleFilter;
-      if (statusFilter) params.status = statusFilter;
+      if (roleFilter !== "all") params.role = roleFilter;
+      if (statusFilter !== "all") params.status = statusFilter;
 
       const response = await userApi.getAll(params);
 
@@ -141,12 +126,11 @@ const UserManagement: React.FC = () => {
         title: "Success",
         description: "User created successfully",
       });
-      setIsCreateDialogOpen(false);
       resetForm();
+      setViewMode('list');
       fetchUsers();
     } catch (error: any) {
-      const errorMessage =
-        error.response?.data?.error || "Failed to create user";
+      const errorMessage = error.response?.data?.error || "Failed to create user";
       toast({
         title: "Error",
         description: errorMessage,
@@ -157,9 +141,7 @@ const UserManagement: React.FC = () => {
         const backendErrors: Record<string, string> = {};
         Object.entries(error.response.data.errors).forEach(
           ([key, messages]: [string, any]) => {
-            backendErrors[key] = Array.isArray(messages)
-              ? messages[0]
-              : messages;
+            backendErrors[key] = Array.isArray(messages) ? messages[0] : messages;
           },
         );
         setFormErrors(backendErrors);
@@ -182,12 +164,11 @@ const UserManagement: React.FC = () => {
         title: "Success",
         description: "User updated successfully",
       });
-      setIsEditDialogOpen(false);
       resetForm();
+      setViewMode('list');
       fetchUsers();
     } catch (error: any) {
-      const errorMessage =
-        error.response?.data?.error || "Failed to update user";
+      const errorMessage = error.response?.data?.error || "Failed to update user";
       toast({
         title: "Error",
         description: errorMessage,
@@ -198,9 +179,7 @@ const UserManagement: React.FC = () => {
         const backendErrors: Record<string, string> = {};
         Object.entries(error.response.data.errors).forEach(
           ([key, messages]: [string, any]) => {
-            backendErrors[key] = Array.isArray(messages)
-              ? messages[0]
-              : messages;
+            backendErrors[key] = Array.isArray(messages) ? messages[0] : messages;
           },
         );
         setFormErrors(backendErrors);
@@ -238,14 +217,13 @@ const UserManagement: React.FC = () => {
     } catch (error: any) {
       toast({
         title: "Error",
-        description:
-          error.response?.data?.error || "Failed to update user status",
+        description: error.response?.data?.error || "Failed to update user status",
         variant: "destructive",
       });
     }
   };
 
-  const openEditDialog = (user: User) => {
+  const openEditMode = (user: User) => {
     setSelectedUser(user);
     setFormData({
       name: user.name,
@@ -255,7 +233,12 @@ const UserManagement: React.FC = () => {
       status: user.status || "active",
     });
     setFormErrors({});
-    setIsEditDialogOpen(true);
+    setViewMode('edit');
+  };
+
+  const openViewMode = (user: User) => {
+    setSelectedUser(user);
+    setViewMode('view');
   };
 
   const resetForm = () => {
@@ -268,466 +251,116 @@ const UserManagement: React.FC = () => {
     });
     setFormErrors({});
     setSelectedUser(null);
+    setShowPassword(false);
   };
 
-  const openCreateDialog = () => {
+  const openCreateMode = () => {
     resetForm();
-    setIsCreateDialogOpen(true);
+    setViewMode('create');
   };
 
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  };
+
+  const handleRoleFilterChange = (value: string) => {
+    setRoleFilter(value);
+    setCurrentPage(1);
+  };
+
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value);
+    setCurrentPage(1);
+  };
+
+  // Render different views based on current mode
+  if (viewMode === 'create' || viewMode === 'edit') {
+    return (
+      <UserForm
+        mode={viewMode}
+        user={selectedUser}
+        formData={formData}
+        formErrors={formErrors}
+        onFormDataChange={setFormData}
+        onSubmit={viewMode === 'create' ? handleCreateUser : handleUpdateUser}
+        onCancel={() => setViewMode('list')}
+      />
+    );
+  }
+
+  if (viewMode === 'view') {
+    return (
+      <UserDetails
+        user={selectedUser}
+        onEdit={openEditMode}
+        onToggleStatus={handleToggleStatus}
+        onDelete={handleDeleteUser}
+        onBack={() => setViewMode('list')}
+      />
+    );
+  }
+
+  // Main list view
   return (
-    <div className="space-y-6 bg-background">
-      <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold">User Management</h2>
-        <Button onClick={openCreateDialog}>
-          <Plus className="mr-2 h-4 w-4" /> Add New User
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-3xl font-bold">User Management</h2>
+          <p className="text-muted-foreground">
+            Manage team members and their access permissions
+          </p>
+        </div>
+        <Button onClick={openCreateMode} className="shrink-0">
+          <Plus className="mr-2 h-4 w-4" />
+          Add New User
         </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Users</CardTitle>
-          <CardDescription>
-            Manage user accounts and permissions
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search users..."
-                  className="pl-8"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                />
-              </div>
-            </div>
+      {/* Filters */}
+      <UserFilters
+        searchQuery={searchQuery}
+        onSearchChange={handleSearchChange}
+        roleFilter={roleFilter}
+        onRoleFilterChange={handleRoleFilterChange}
+        statusFilter={statusFilter}
+        onStatusFilterChange={handleStatusFilterChange}
+      />
 
-            <div className="w-full md:w-[150px]">
-              <Select
-                value={roleFilter}
-                onValueChange={(value) => {
-                  setRoleFilter(value);
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Roles" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All Roles</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="user">User</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      {/* Content */}
+      {loading ? (
+        <LoadingSpinner message="Loading users..." />
+      ) : (users || []).length === 0 ? (
+        <EmptyState
+          icon={<Users className="h-12 w-12" />}
+          title="No users found"
+          description="Get started by adding your first team member."
+          actionLabel="Add Your First User"
+          onAction={openCreateMode}
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {(users || []).map((user) => (
+            <UserCard
+              key={user.id}
+              user={user}
+              onView={openViewMode}
+              onEdit={openEditMode}
+              onToggleStatus={handleToggleStatus}
+              onDelete={handleDeleteUser}
+            />
+          ))}
+        </div>
+      )}
 
-            <div className="w-full md:w-[150px]">
-              <Select
-                value={statusFilter}
-                onValueChange={(value) => {
-                  setStatusFilter(value);
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="All Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="flex justify-center items-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <span className="ml-2">Loading users...</span>
-            </div>
-          ) : (users || []).length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No users found.
-            </div>
-          ) : (
-            <div className="rounded-md border">
-              <div className="grid grid-cols-12 bg-muted p-4 font-medium">
-                <div className="col-span-4">User</div>
-                <div className="col-span-2">Role</div>
-                <div className="col-span-2">Status</div>
-                <div className="col-span-2">Created</div>
-                <div className="col-span-2 text-right">Actions</div>
-              </div>
-
-              {users.map((user) => (
-                <div
-                  key={user.id}
-                  className="grid grid-cols-12 p-4 border-t items-center"
-                >
-                  <div className="col-span-4 flex items-center gap-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={user.avatar} alt={user.name} />
-                      <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium">{user.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {user.email}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="col-span-2">
-                    <Badge
-                      variant={user.role === "admin" ? "default" : "outline"}
-                      className="capitalize"
-                    >
-                      {user.role === "admin" && (
-                        <Shield className="h-3 w-3 mr-1" />
-                      )}
-                      {user.role === "user" && (
-                        <User className="h-3 w-3 mr-1" />
-                      )}
-                      {user.role}
-                    </Badge>
-                  </div>
-                  <div className="col-span-2">
-                    {user.status === "active" || !user.status ? (
-                      <Badge variant="default" className="bg-green-500">
-                        Active
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary">Inactive</Badge>
-                    )}
-                  </div>
-                  <div className="col-span-2 text-sm text-muted-foreground">
-                    {new Date(user.created_at).toLocaleDateString()}
-                  </div>
-                  <div className="col-span-2 flex justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => openEditDialog(user)}
-                      title="Edit User"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleToggleStatus(user.id)}
-                      title={
-                        user.status === "active" ? "Deactivate" : "Activate"
-                      }
-                    >
-                      {user.status === "active" ? (
-                        <UserX className="h-4 w-4" />
-                      ) : (
-                        <UserCheck className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDeleteUser(user.id)}
-                      title="Delete User"
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {totalPages > 1 && (
-            <div className="flex justify-center mt-4 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1 || loading}
-              >
-                Previous
-              </Button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                  const page = currentPage <= 3 ? i + 1 : currentPage - 2 + i;
-                  if (page > totalPages) return null;
-                  return (
-                    <Button
-                      key={page}
-                      variant={currentPage === page ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setCurrentPage(page)}
-                      className="w-8 h-8 p-0"
-                      disabled={loading}
-                    >
-                      {page}
-                    </Button>
-                  );
-                })}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setCurrentPage((p) => Math.min(totalPages, p + 1))
-                }
-                disabled={currentPage === totalPages || loading}
-              >
-                Next
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Create User Dialog */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New User</DialogTitle>
-            <DialogDescription>
-              Create a new user account with appropriate permissions.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                placeholder="Enter full name"
-                className={formErrors.name ? "border-red-500" : ""}
-              />
-              {formErrors.name && (
-                <p className="text-sm text-red-500">{formErrors.name}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
-                placeholder="Enter email address"
-                className={formErrors.email ? "border-red-500" : ""}
-              />
-              {formErrors.email && (
-                <p className="text-sm text-red-500">{formErrors.email}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={(e) =>
-                  setFormData({ ...formData, password: e.target.value })
-                }
-                placeholder="Enter password"
-                className={formErrors.password ? "border-red-500" : ""}
-              />
-              {formErrors.password && (
-                <p className="text-sm text-red-500">{formErrors.password}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value: "admin" | "user") =>
-                  setFormData({ ...formData, role: value })
-                }
-              >
-                <SelectTrigger
-                  className={formErrors.role ? "border-red-500" : ""}
-                >
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-              {formErrors.role && (
-                <p className="text-sm text-red-500">{formErrors.role}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value: "active" | "inactive") =>
-                  setFormData({ ...formData, status: value })
-                }
-              >
-                <SelectTrigger
-                  className={formErrors.status ? "border-red-500" : ""}
-                >
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-              {formErrors.status && (
-                <p className="text-sm text-red-500">{formErrors.status}</p>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsCreateDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleCreateUser}>Create User</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit User Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription>
-              Update user information and permissions.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit_name">Full Name</Label>
-              <Input
-                id="edit_name"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                placeholder="Enter full name"
-                className={formErrors.name ? "border-red-500" : ""}
-              />
-              {formErrors.name && (
-                <p className="text-sm text-red-500">{formErrors.name}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit_email">Email</Label>
-              <Input
-                id="edit_email"
-                type="email"
-                value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
-                placeholder="Enter email address"
-                className={formErrors.email ? "border-red-500" : ""}
-              />
-              {formErrors.email && (
-                <p className="text-sm text-red-500">{formErrors.email}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit_password">Password</Label>
-              <Input
-                id="edit_password"
-                type="password"
-                value={formData.password}
-                onChange={(e) =>
-                  setFormData({ ...formData, password: e.target.value })
-                }
-                placeholder="Leave blank to keep current password"
-                className={formErrors.password ? "border-red-500" : ""}
-              />
-              {formErrors.password && (
-                <p className="text-sm text-red-500">{formErrors.password}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit_role">Role</Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value: "admin" | "user") =>
-                  setFormData({ ...formData, role: value })
-                }
-              >
-                <SelectTrigger
-                  className={formErrors.role ? "border-red-500" : ""}
-                >
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-              {formErrors.role && (
-                <p className="text-sm text-red-500">{formErrors.role}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit_status">Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value: "active" | "inactive") =>
-                  setFormData({ ...formData, status: value })
-                }
-              >
-                <SelectTrigger
-                  className={formErrors.status ? "border-red-500" : ""}
-                >
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-              {formErrors.status && (
-                <p className="text-sm text-red-500">{formErrors.status}</p>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsEditDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleUpdateUser}>Update User</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Pagination */}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        loading={loading}
+      />
     </div>
   );
 };

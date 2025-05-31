@@ -105,7 +105,7 @@ const WidgetPreview = ({
     },
   ]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
     // Add user message
@@ -116,20 +116,48 @@ const WidgetPreview = ({
       timestamp: new Date(),
     };
 
+    const currentInput = inputValue;
     setMessages([...messages, userMessage]);
     setInputValue("");
 
-    // Simulate AI response after a short delay
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content:
-          "This is a simulated response from the AI assistant. In a real implementation, this would be the response from your selected AI provider.",
-        sender: "ai",
-        timestamp: new Date(),
-      };
-      setMessages((prevMessages) => [...prevMessages, aiMessage]);
-    }, config?.behavior?.responseDelay || 1000);
+    // Show typing indicator
+    const typingMessage: Message = {
+      id: "typing",
+      content: "AI is typing...",
+      sender: "ai",
+      timestamp: new Date(),
+    };
+    setMessages((prevMessages) => [...prevMessages, typingMessage]);
+
+    try {
+      // In preview mode, we'll simulate a response since we don't have a real widget ID
+      // In production, this would call the actual API
+      await new Promise(resolve => setTimeout(resolve, config?.behavior?.responseDelay || 1000));
+
+      // Remove typing indicator and add real response
+      setMessages((prevMessages) => {
+        const withoutTyping = prevMessages.filter(msg => msg.id !== "typing");
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: `This is a preview response to: "${currentInput}". In production, this would be a real AI response from your configured provider.`,
+          sender: "ai",
+          timestamp: new Date(),
+        };
+        return [...withoutTyping, aiMessage];
+      });
+    } catch (error) {
+      // Remove typing indicator and show error
+      setMessages((prevMessages) => {
+        const withoutTyping = prevMessages.filter(msg => msg.id !== "typing");
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: "Sorry, I encountered an error. Please try again.",
+          sender: "ai",
+          timestamp: new Date(),
+        };
+        return [...withoutTyping, errorMessage];
+      });
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -219,11 +247,10 @@ const WidgetPreview = ({
                       </Avatar>
                     )}
                     <div
-                      className={`rounded-lg p-3 ${
-                        message.sender === "user"
+                      className={`rounded-lg p-3 ${message.sender === "user"
                           ? "bg-primary text-primary-foreground"
                           : "bg-muted"
-                      }`}
+                        }`}
                       style={{
                         backgroundColor:
                           message.sender === "user"

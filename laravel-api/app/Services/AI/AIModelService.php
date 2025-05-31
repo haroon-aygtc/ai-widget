@@ -10,12 +10,7 @@ use Illuminate\Support\Facades\Cache;
 
 class AIModelService
 {
-    protected $aiService;
-
-    public function __construct(AIService $aiService)
-    {
-        $this->aiService = $aiService;
-    }
+    // No longer needs dependency injection - uses static factory methods
 
     /**
      * Fetch available models from a provider
@@ -34,19 +29,13 @@ class AIModelService
         }
 
         try {
-            $providerService = $this->aiService->getProvider($provider);
+            // Use default models for now - individual providers can be enhanced later
+            $models = $this->getDefaultModelsForProvider($provider);
 
-            if (method_exists($providerService, 'getAvailableModels')) {
-                $models = $providerService->getAvailableModels(['apiKey' => $apiKey]);
+            // Cache the results
+            Cache::put($cacheKey, $models, 3600);
 
-                // Cache the results
-                Cache::put($cacheKey, $models, 3600);
-
-                return $models;
-            }
-
-            // Default implementation for providers without specific model fetching
-            return $this->getDefaultModelsForProvider($provider);
+            return $models;
 
         } catch (\Exception $e) {
             Log::error('Error fetching models', [
@@ -73,16 +62,22 @@ class AIModelService
     public function testModel(string $provider, string $modelId, array $config): array
     {
         try {
-            $providerService = $this->aiService->getProvider($provider);
+            // Create a temporary provider for testing
+            $tempProvider = new AIProvider([
+                'provider_type' => $provider,
+                'api_key' => $config['apiKey'] ?? '',
+                'model' => $modelId,
+                'temperature' => $config['temperature'] ?? 0.7,
+                'max_tokens' => $config['maxTokens'] ?? 100,
+            ]);
 
-            // Add the model to the config
-            $config['model'] = $modelId;
+            $providerService = AIServiceFactory::create($tempProvider);
 
             // Use a simple test prompt
             $testPrompt = 'Respond with a short greeting.';
 
             $startTime = microtime(true);
-            $response = $providerService->generateResponse($testPrompt, $config);
+            $response = $providerService->generateResponse($testPrompt, []);
             $endTime = microtime(true);
 
             // Calculate response time in milliseconds

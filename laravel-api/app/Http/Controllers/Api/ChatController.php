@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Message;
 use App\Models\ChatHistory;
 use App\Models\Widget;
-use App\Services\AI\AIService;
+use App\Services\AI\AIServiceFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
@@ -16,12 +16,7 @@ use Illuminate\Http\JsonResponse;
 
 class ChatController extends Controller
 {
-    protected $aiService;
-
-    public function __construct(AIService $aiService)
-    {
-        $this->aiService = $aiService;
-    }
+    // Removed dependency injection - using factory pattern instead
 
     /**
      * Get chat history by session ID.
@@ -106,28 +101,25 @@ class ChatController extends Controller
             ]);
 
             // Get conversation context
-            $context = $this->getConversationContext($request->session_id, $widget->behavior['maxMessages'] ?? 10);
+            $conversationHistory = $this->getConversationContext($request->session_id, $widget->behavior['maxMessages'] ?? 10);
 
-            // Prepare AI configuration with decrypted API key
-            $aiConfig = [
-                'apiKey' => $widget->aiProvider->decrypted_api_key,
-                'model' => $widget->aiProvider->model,
-                'temperature' => $widget->aiProvider->temperature ?? 0.7,
-                'maxTokens' => $widget->aiProvider->max_tokens ?? 2048,
-                'systemPrompt' => $this->buildSystemPrompt($widget, $request->user_data)
+            // Create AI service instance using factory
+            $aiService = AIServiceFactory::create($widget->aiProvider);
+
+            // Prepare context for AI
+            $context = [
+                'conversation_history' => $conversationHistory,
+                'widget_config' => $widget->behavior ?? [],
+                'user_data' => $request->user_data ?? []
             ];
 
             // Generate AI response
-            $aiResponse = $this->aiService->processMessage(
-                $widget->aiProvider->provider_type,
-                $sanitizedMessage,
-                $aiConfig,
-                false,
-                $context
-            );
+            $startTime = microtime(true);
+            $aiResponse = $aiService->generateResponse($sanitizedMessage, $context);
+            $responseTime = microtime(true) - $startTime;
 
             if (!$aiResponse['success']) {
-                throw new \Exception($aiResponse['message'] ?? 'AI service error');
+                throw new \Exception($aiResponse['error'] ?? 'AI service error');
             }
 
             // Store AI response
@@ -135,10 +127,11 @@ class ChatController extends Controller
                 'session_id' => $request->session_id,
                 'widget_id' => $widget->id,
                 'sender_type' => 'ai',
-                'message' => $aiResponse['response'],
-                'response_time' => $aiResponse['response_time'] ?? null,
-                'token_usage' => $aiResponse['token_usage'] ?? null,
-                'model_used' => $aiResponse['model'] ?? $widget->aiProvider->model
+                'response' => $aiResponse['content'],
+                'response_time' => $responseTime,
+                'token_usage' => $aiResponse['usage'] ?? null,
+                'ai_model' => $aiResponse['model'] ?? $widget->aiProvider->model,
+                'ai_provider_id' => $widget->aiProvider->id
             ]);
 
             // Update or create chat history record
@@ -147,14 +140,21 @@ class ChatController extends Controller
             Log::info('Chat message processed', [
                 'widget_id' => $widget->id,
                 'session_id' => $request->session_id,
-                'response_time' => $aiResponse['response_time'] ?? null
+                'response_time' => $responseTime,
+                'provider' => $widget->aiProvider->provider_type,
+                'model' => $aiResponse['model'] ?? $widget->aiProvider->model
             ]);
 
             return response()->json([
                 'success' => true,
-                'response' => $aiResponse['response'],
+                'response' => $aiResponse['content'],
                 'message_id' => $aiMessage->id,
-                'response_time' => $aiResponse['response_time'] ?? null
+                'response_time' => round($responseTime, 3),
+                'metadata' => [
+                    'model' => $aiResponse['model'] ?? $widget->aiProvider->model,
+                    'provider' => $widget->aiProvider->provider_type,
+                    'token_usage' => $aiResponse['usage'] ?? null
+                ]
             ]);
 
         } catch (\Exception $e) {

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -32,7 +32,45 @@ import {
   MessageSquare,
   Clock,
   ThumbsUp,
+  RefreshCw,
 } from "lucide-react";
+import   api  from "@/lib/api";
+import { LoadingSpinner } from "@/components/shared/loading-spinner";
+
+interface AnalyticsData {
+  usage?: {
+    daily_stats: Array<{
+      date: string;
+      conversations: number;
+      total_messages: number;
+      user_messages: number;
+      ai_messages: number;
+    }>;
+    summary: {
+      total_conversations: number;
+      total_messages: number;
+      average_messages_per_conversation: number;
+      average_response_time: number | null;
+    };
+  };
+  engagement?: {
+    average_session_duration: string;
+    completion_rate: string;
+    return_rate: string;
+    average_messages_per_session: number;
+    total_sessions: number;
+  };
+  quality?: {
+    average_rating: number | null;
+    rating_distribution: {
+      excellent: number;
+      good: number;
+      average: number;
+      poor: number;
+    };
+    total_ratings: number;
+  };
+}
 
 interface AnalyticsDashboardProps {
   widgetId?: string;
@@ -49,33 +87,84 @@ const AnalyticsDashboard = ({
     to: new Date(),
   },
 }: AnalyticsDashboardProps) => {
-  const [date, setDate] = React.useState<{ from: Date; to: Date }>(dateRange);
-  const [selectedWidget, setSelectedWidget] = React.useState<string>(widgetId);
-  const [selectedTab, setSelectedTab] = React.useState<string>("usage");
+  const [date, setDate] = useState<{ from: Date; to: Date }>(dateRange);
+  const [selectedWidget, setSelectedWidget] = useState<string>(widgetId);
+  const [selectedTab, setSelectedTab] = useState<string>("usage");
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock data for charts
-  const usageData = [
-    { date: "2023-05-01", conversations: 120 },
-    { date: "2023-05-02", conversations: 145 },
-    { date: "2023-05-03", conversations: 132 },
-    { date: "2023-05-04", conversations: 167 },
-    { date: "2023-05-05", conversations: 189 },
-    { date: "2023-05-06", conversations: 156 },
-    { date: "2023-05-07", conversations: 123 },
-  ];
+  // Fetch analytics data
+  const fetchAnalytics = async () => {
+    setLoading(true);
+    setError(null);
 
-  const qualityData = {
-    excellent: 45,
-    good: 30,
-    average: 15,
-    poor: 10,
+    try {
+      const params = new URLSearchParams({
+        start_date: date.from.toISOString().split('T')[0],
+        end_date: date.to.toISOString().split('T')[0],
+        include: 'usage,engagement,quality'
+      });
+
+      if (selectedWidget !== "all") {
+        params.append('widget_id', selectedWidget);
+      }
+
+      const response = await api.get(`/analytics/report?${params}`);
+
+      if (response.data.success) {
+        setAnalyticsData(response.data.data);
+      } else {
+        setError('Failed to fetch analytics data');
+      }
+    } catch (err) {
+      console.error('Analytics fetch error:', err);
+      setError('Failed to load analytics data');
+      // Fallback to mock data for development
+      setAnalyticsData({
+        usage: {
+          daily_stats: [
+            { date: "2023-05-01", conversations: 120, total_messages: 240, user_messages: 120, ai_messages: 120 },
+            { date: "2023-05-02", conversations: 145, total_messages: 290, user_messages: 145, ai_messages: 145 },
+            { date: "2023-05-03", conversations: 132, total_messages: 264, user_messages: 132, ai_messages: 132 },
+          ],
+          summary: {
+            total_conversations: 1248,
+            total_messages: 7842,
+            average_messages_per_conversation: 6.3,
+            average_response_time: 1.2
+          }
+        },
+        engagement: {
+          average_session_duration: "3m 24s",
+          completion_rate: "78%",
+          return_rate: "42%",
+          average_messages_per_session: 6.3,
+          total_sessions: 1248
+        },
+        quality: {
+          average_rating: 4.2,
+          rating_distribution: {
+            excellent: 45,
+            good: 30,
+            average: 15,
+            poor: 10,
+          },
+          total_ratings: 892
+        }
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const engagementData = {
-    averageSessionTime: "3m 24s",
-    completionRate: "78%",
-    returnRate: "42%",
-    averageMessagesPerConversation: 6.3,
+  // Fetch data on component mount and when dependencies change
+  useEffect(() => {
+    fetchAnalytics();
+  }, [selectedWidget, date.from, date.to]);
+
+  const handleRefresh = () => {
+    fetchAnalytics();
   };
 
   return (
@@ -135,6 +224,10 @@ const AnalyticsDashboard = ({
             </PopoverContent>
           </Popover>
 
+          <Button variant="outline" size="icon" onClick={handleRefresh} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+
           <Button variant="outline" size="icon">
             <Download className="h-4 w-4" />
           </Button>
@@ -162,6 +255,22 @@ const AnalyticsDashboard = ({
         </TabsList>
 
         <TabsContent value="usage" className="space-y-4 mt-4">
+          {loading && (
+            <div className="flex items-center justify-center py-8">
+              <LoadingSpinner />
+              <span className="ml-2">Loading analytics data...</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-800">{error}</p>
+              <Button variant="outline" size="sm" onClick={handleRefresh} className="mt-2">
+                Try Again
+              </Button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card>
               <CardHeader className="pb-2">
@@ -170,9 +279,11 @@ const AnalyticsDashboard = ({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">1,248</div>
+                <div className="text-2xl font-bold">
+                  {analyticsData.usage?.summary.total_conversations?.toLocaleString() || '0'}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  +12.3% from last month
+                  For selected period
                 </p>
               </CardContent>
             </Card>
@@ -183,22 +294,29 @@ const AnalyticsDashboard = ({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">7,842</div>
+                <div className="text-2xl font-bold">
+                  {analyticsData.usage?.summary.total_messages?.toLocaleString() || '0'}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  +8.7% from last month
+                  Avg: {analyticsData.usage?.summary.average_messages_per_conversation || '0'} per conversation
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">
-                  Active Users
+                  Avg Response Time
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">892</div>
+                <div className="text-2xl font-bold">
+                  {analyticsData.usage?.summary.average_response_time
+                    ? `${analyticsData.usage.summary.average_response_time.toFixed(2)}s`
+                    : 'N/A'
+                  }
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  +15.6% from last month
+                  AI response latency
                 </p>
               </CardContent>
             </Card>
@@ -305,10 +423,12 @@ const AnalyticsDashboard = ({
               <CardContent>
                 <div className="flex items-center">
                   <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
-                  <div className="text-2xl font-bold">3m 24s</div>
+                  <div className="text-2xl font-bold">
+                    {analyticsData.engagement?.average_session_duration || 'N/A'}
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  +0.8% from last month
+                  Per conversation session
                 </p>
               </CardContent>
             </Card>
@@ -319,9 +439,11 @@ const AnalyticsDashboard = ({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">78%</div>
+                <div className="text-2xl font-bold">
+                  {analyticsData.engagement?.completion_rate || 'N/A'}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  +2.4% from last month
+                  Sessions with 3+ messages
                 </p>
               </CardContent>
             </Card>
@@ -332,25 +454,29 @@ const AnalyticsDashboard = ({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">42%</div>
+                <div className="text-2xl font-bold">
+                  {analyticsData.engagement?.return_rate || 'N/A'}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  +5.1% from last month
+                  Users who came back
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">
-                  Avg. Messages/Conversation
+                  Avg. Messages/Session
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center">
                   <MessageSquare className="h-4 w-4 mr-2 text-muted-foreground" />
-                  <div className="text-2xl font-bold">6.3</div>
+                  <div className="text-2xl font-bold">
+                    {analyticsData.engagement?.average_messages_per_session || 'N/A'}
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  +1.2 from last month
+                  Messages per session
                 </p>
               </CardContent>
             </Card>

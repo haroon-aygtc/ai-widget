@@ -4,20 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AIProvider;
-use App\Services\AI\AIService;
+use App\Services\AI\AIServiceFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 
 class AIProviderController extends Controller
 {
-    protected $aiService;
-
-    public function __construct(AIService $aiService)
-    {
-        $this->aiService = $aiService;
-    }
-
     /**
      * Display a listing of the resource.
      *
@@ -47,14 +40,31 @@ class AIProviderController extends Controller
             'provider_type' => 'required|string',
             'api_key' => 'required|string',
             'model' => 'required|string',
-            'temperature' => 'numeric|min:0|max:1',
-            'max_tokens' => 'integer|min:1',
+            'temperature' => 'numeric|min:0|max:2',
+            'max_tokens' => 'integer|min:1|max:32000',
             'system_prompt' => 'nullable|string',
-            'advanced_settings' => 'nullable|array',
+            'stream_response' => 'boolean',
+            'context_window' => 'integer|min:1',
+            'top_p' => 'numeric|min:0|max:1',
+            'is_active' => 'boolean',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        // Basic validation is already done above
+
+        // Check if provider already exists for this user
+        $existingProvider = AIProvider::where('user_id', Auth::id())
+            ->where('provider_type', $request->provider_type)
+            ->first();
+
+        if ($existingProvider) {
+            return response()->json([
+                'message' => 'Provider already exists. Use update instead.',
+                'provider_id' => $existingProvider->id
+            ], 409);
         }
 
         $provider = new AIProvider();
@@ -64,9 +74,13 @@ class AIProviderController extends Controller
         $provider->model = $request->model;
         $provider->temperature = $request->temperature ?? 0.7;
         $provider->max_tokens = $request->max_tokens ?? 2048;
-        $provider->system_prompt = $request->system_prompt;
-        $provider->advanced_settings = $request->advanced_settings;
-        $provider->is_active = true;
+        $provider->system_prompt = $request->system_prompt ?? 'You are a helpful assistant.';
+        $provider->advanced_settings = [
+            'stream_response' => $request->stream_response ?? true,
+            'context_window' => $request->context_window ?? 4096,
+            'top_p' => $request->top_p ?? 0.95,
+        ];
+        $provider->is_active = $request->is_active ?? true;
         $provider->save();
 
         // Mask API key before returning
@@ -103,30 +117,62 @@ class AIProviderController extends Controller
         $provider = AIProvider::where('user_id', Auth::id())->findOrFail($id);
 
         $validator = Validator::make($request->all(), [
-            'provider_type' => 'string',
-            'api_key' => 'string',
-            'model' => 'string',
-            'temperature' => 'numeric|min:0|max:1',
-            'max_tokens' => 'integer|min:1',
+            'provider_type' => 'sometimes|string',
+            'api_key' => 'sometimes|string',
+            'model' => 'sometimes|string',
+            'temperature' => 'sometimes|numeric|min:0|max:2',
+            'max_tokens' => 'sometimes|integer|min:1|max:32000',
             'system_prompt' => 'nullable|string',
-            'advanced_settings' => 'nullable|array',
-            'is_active' => 'boolean',
+            'stream_response' => 'sometimes|boolean',
+            'context_window' => 'sometimes|integer|min:1',
+            'top_p' => 'sometimes|numeric|min:0|max:1',
+            'is_active' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        // Only update fields that are present in the request
-        if ($request->has('provider_type')) $provider->provider_type = $request->provider_type;
-        if ($request->has('api_key')) $provider->api_key = $request->api_key;
-        if ($request->has('model')) $provider->model = $request->model;
-        if ($request->has('temperature')) $provider->temperature = $request->temperature;
-        if ($request->has('max_tokens')) $provider->max_tokens = $request->max_tokens;
-        if ($request->has('system_prompt')) $provider->system_prompt = $request->system_prompt;
-        if ($request->has('advanced_settings')) $provider->advanced_settings = $request->advanced_settings;
-        if ($request->has('is_active')) $provider->is_active = $request->is_active;
+        // Basic validation is already done above
 
+        // Update fields
+        if ($request->has('provider_type')) {
+            $provider->provider_type = $request->provider_type;
+        }
+        if ($request->has('api_key')) {
+            $provider->api_key = $request->api_key;
+        }
+        if ($request->has('model')) {
+            $provider->model = $request->model;
+        }
+        if ($request->has('temperature')) {
+            $provider->temperature = $request->temperature;
+        }
+        if ($request->has('max_tokens')) {
+            $provider->max_tokens = $request->max_tokens;
+        }
+        if ($request->has('system_prompt')) {
+            $provider->system_prompt = $request->system_prompt;
+        }
+        if ($request->has('is_active')) {
+            $provider->is_active = $request->is_active;
+        }
+
+        // Update advanced settings
+        $advancedSettings = $provider->advanced_settings ?? [];
+        if ($request->has('stream_response')) {
+            $advancedSettings['stream_response'] = $request->stream_response;
+        }
+        if ($request->has('context_window')) {
+            $advancedSettings['context_window'] = $request->context_window;
+        }
+        if ($request->has('top_p')) {
+            $advancedSettings['top_p'] = $request->top_p;
+        }
+
+        // Keep existing advanced settings structure
+
+        $provider->advanced_settings = $advancedSettings;
         $provider->save();
 
         // Mask API key before returning
@@ -146,7 +192,7 @@ class AIProviderController extends Controller
         $provider = AIProvider::where('user_id', Auth::id())->findOrFail($id);
         $provider->delete();
 
-        return response()->json(null, 204);
+        return response()->json(['message' => 'AI Provider deleted successfully']);
     }
 
     /**
@@ -167,18 +213,7 @@ class AIProviderController extends Controller
         }
 
         try {
-            // Decrypt API key for testing
-            $apiKey = $request->apiKey;
-            try {
-                $apiKey = \Illuminate\Support\Facades\Crypt::decryptString($request->apiKey);
-            } catch (\Exception $e) {
-                // If decryption fails, use as-is (might be plain text for testing)
-            }
-
-            $result = $this->aiService->testConnection($request->provider, [
-                'apiKey' => $apiKey,
-            ]);
-
+            $result = AIServiceFactory::testConnection($request->provider, $request->apiKey);
             return response()->json($result);
         } catch (\Exception $e) {
             return response()->json([
@@ -189,73 +224,32 @@ class AIProviderController extends Controller
         }
     }
 
-    /**
-     * Generate a response from an AI provider
-     *
-     * @param \Illuminate\Http\Request $request
-     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\StreamedResponse
-     */
-    public function generateResponse(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'provider' => 'required|string',
-            'message' => 'required|string',
-            'apiKey' => 'required|string',
-            'model' => 'nullable|string',
-            'temperature' => 'nullable|numeric|min:0|max:1',
-            'maxTokens' => 'nullable|integer|min:1',
-            'systemPrompt' => 'nullable|string',
-            'stream' => 'nullable|boolean',
-            'advancedSettings' => 'nullable|array',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        try {
-            $config = [
-                'apiKey' => $request->apiKey,
-                'model' => $request->model,
-                'temperature' => $request->temperature,
-                'maxTokens' => $request->maxTokens,
-                'systemPrompt' => $request->systemPrompt,
-            ];
-
-            // Add any advanced settings
-            if ($request->has('advancedSettings')) {
-                $config = array_merge($config, $request->advancedSettings);
-            }
-
-            // Handle streaming if requested
-            if ($request->stream) {
-                return $this->aiService->processMessage($request->provider, $request->message, $config, true);
-            }
-
-            $result = $this->aiService->processMessage($request->provider, $request->message, $config);
-            return response()->json($result);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-                'provider' => $request->provider
-            ], 500);
-        }
-    }
+    // generateResponse method removed - use ChatController for AI responses
 
     /**
-     * Get available AI providers
+     * Get available AI providers with their configurations
      *
      * @return \Illuminate\Http\JsonResponse
      */
     public function getAvailableProviders()
     {
-        $providers = $this->aiService->getAvailableProviders();
+        try {
+            $providers = AIServiceFactory::getAvailableProviders();
 
-        return response()->json([
-            'providers' => $providers
-        ]);
+            return response()->json([
+                'success' => true,
+                'providers' => $providers
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch available providers',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
+
+    // getProviderConfig method removed - provider configs are now in AIServiceFactory
 
     /**
      * Mask API key for security
@@ -263,18 +257,12 @@ class AIProviderController extends Controller
      * @param string $apiKey
      * @return string
      */
-    protected function maskApiKey(string $apiKey): string
+    private function maskApiKey(string $apiKey): string
     {
         if (strlen($apiKey) <= 8) {
-            return '********';
+            return str_repeat('*', strlen($apiKey));
         }
 
-        $visibleChars = 4;
-        $prefix = substr($apiKey, 0, $visibleChars);
-        $suffix = substr($apiKey, -$visibleChars);
-        $maskedLength = strlen($apiKey) - ($visibleChars * 2);
-        $masked = str_repeat('*', $maskedLength);
-
-        return $prefix . $masked . $suffix;
+        return substr($apiKey, 0, 4) . str_repeat('*', strlen($apiKey) - 8) . substr($apiKey, -4);
     }
 }

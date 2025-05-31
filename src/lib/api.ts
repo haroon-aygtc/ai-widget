@@ -64,6 +64,7 @@ export const aiProviderApi = {
   generateResponse: (data: GenerateResponseData) =>
     api.post("/ai-providers/generate-response", data),
   getAvailableProviders: () => api.get("/ai-providers/available"),
+  getProviderConfig: (providerType: string) => api.get(`/ai-providers/config/${providerType}`),
 };
 
 interface WidgetData {
@@ -105,6 +106,7 @@ export interface UserData {
   name: string;
   email: string;
   password?: string;
+  password_confirmation?: string;
   role?: "admin" | "user";
   status?: "active" | "inactive";
 }

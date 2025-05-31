@@ -1,342 +1,271 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreAIModelRequest;
+use App\Http\Requests\UpdateAIModelRequest;
 use App\Models\AIModel;
 use App\Models\AIProvider;
-use App\Services\AI\AIService;
+use App\Services\AI\AIModelService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Http\JsonResponse;
 
 class AIModelController extends Controller
 {
-    protected $aiService;
+    protected $modelService;
 
-    public function __construct(AIService $aiService)
+    public function __construct(AIModelService $modelService)
     {
-        $this->aiService = $aiService;
+        $this->modelService = $modelService;
     }
 
     /**
      * Display a listing of AI models.
      *
      * @param Request $request
-     * @return JsonResponse
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request)
     {
-        try {
-            $query = AIModel::where('user_id', Auth::id())
-                           ->with(['aiProvider:id,provider_type,model']);
+        $query = AIModel::where('user_id', Auth::id());
 
-            // Apply filters
-            if ($request->has('search')) {
-                $query->where('name', 'like', '%' . $request->search . '%');
-            }
-
-            if ($request->has('provider_type')) {
-                $query->where('provider_type', $request->provider_type);
-            }
-
-            if ($request->has('is_active')) {
-                $query->where('is_active', $request->boolean('is_active'));
-            }
-
-            if ($request->has('is_featured')) {
-                $query->where('is_featured', $request->boolean('is_featured'));
-            }
-
-            // Apply sorting
-            $sortBy = $request->get('sort_by', 'created_at');
-            $sortOrder = $request->get('sort_order', 'desc');
-            $query->orderBy($sortBy, $sortOrder);
-
-            // Pagination
-            $perPage = min($request->get('per_page', 15), 100);
-            $models = $query->paginate($perPage);
-
-            return response()->json([
-                'data' => $models->items(),
-                'current_page' => $models->currentPage(),
-                'last_page' => $models->lastPage(),
-                'per_page' => $models->perPage(),
-                'total' => $models->total()
-            ]);
-        } catch (\Exception $e) {
-            Log::error('AI Model index error: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch AI models'], 500);
+        // Apply filters if provided
+        if ($request->has('provider_type')) {
+            $query->where('provider_type', $request->provider_type);
         }
+
+        if ($request->has('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+
+        if ($request->has('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('model_id', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        // Sort options
+        $sortField = $request->get('sort_by', 'created_at');
+        $sortDirection = $request->get('sort_direction', 'desc');
+
+        // Validate sort field to prevent SQL injection
+        $allowedSortFields = ['name', 'provider_type', 'created_at', 'is_active', 'is_featured'];
+        if (!in_array($sortField, $allowedSortFields)) {
+            $sortField = 'created_at';
+        }
+
+        $query->orderBy($sortField, $sortDirection === 'asc' ? 'asc' : 'desc');
+
+        // Pagination
+        $perPage = $request->get('per_page', 10);
+        $models = $query->paginate($perPage);
+
+        return response()->json($models);
     }
 
     /**
      * Store a newly created AI model.
      *
-     * @param Request $request
-     * @return JsonResponse
+     * @param StoreAIModelRequest $request
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function store(Request $request): JsonResponse
+    public function store(StoreAIModelRequest $request)
     {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'model_id' => 'required|string|max:255',
-            'provider_type' => 'required|string|max:100',
-            'ai_provider_id' => 'nullable|exists:a_i_providers,id',
-            'description' => 'nullable|string|max:1000',
-            'temperature' => 'nullable|numeric|min:0|max:2',
-            'max_tokens' => 'nullable|integer|min:1|max:32000',
-            'system_prompt' => 'nullable|string',
-            'capabilities' => 'nullable|array',
-            'configuration' => 'nullable|array',
-            'is_active' => 'nullable|boolean',
-            'is_featured' => 'nullable|boolean',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
         try {
-            // Verify AI provider belongs to user if provided
-            if ($request->ai_provider_id) {
-                $aiProvider = AIProvider::where('id', $request->ai_provider_id)
-                                      ->where('user_id', Auth::id())
-                                      ->first();
-                if (!$aiProvider) {
-                    return response()->json(['error' => 'AI Provider not found'], 404);
-                }
-            }
+            $data = $request->validated();
+            $data['user_id'] = Auth::id();
 
-            $model = AIModel::create([
-                'user_id' => Auth::id(),
-                'ai_provider_id' => $request->ai_provider_id,
-                'name' => $request->name,
-                'model_id' => $request->model_id,
-                'provider_type' => $request->provider_type,
-                'description' => $request->description,
-                'temperature' => $request->temperature ?? 0.7,
-                'max_tokens' => $request->max_tokens ?? 1000,
-                'system_prompt' => $request->system_prompt,
-                'capabilities' => $request->capabilities,
-                'configuration' => $request->configuration,
-                'is_active' => $request->is_active ?? true,
-                'is_featured' => $request->is_featured ?? false,
+            // Initialize performance metrics
+            $data['performance_metrics'] = [
+                'usage_count' => 0,
+                'total_response_time' => 0,
+                'avg_response_time' => 0,
+                'total_tokens' => 0,
+                'last_used' => null
+            ];
+
+            $model = AIModel::create($data);
+
+            return response()->json([
+                'message' => 'AI model created successfully',
+                'model' => $model
+            ], 201);
+        } catch (\Exception $e) {
+            Log::error('Failed to create AI model', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
-            $model->load('aiProvider:id,provider_type,model');
-
-            Log::info('AI Model created', ['model_id' => $model->id, 'user_id' => Auth::id()]);
-
-            return response()->json($model, 201);
-        } catch (\Exception $e) {
-            Log::error('AI Model creation error: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to create AI model'], 500);
+            return response()->json([
+                'message' => 'Failed to create AI model',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 
     /**
      * Display the specified AI model.
      *
-     * @param string $id
-     * @return JsonResponse
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function show(string $id): JsonResponse
+    public function show($id)
     {
-        try {
-            $model = AIModel::where('user_id', Auth::id())
-                          ->with(['aiProvider:id,provider_type,model'])
-                          ->findOrFail($id);
+        $model = AIModel::where('id', $id)
+            ->where('user_id', Auth::id())
+            ->first();
 
-            return response()->json($model);
-        } catch (\Exception $e) {
-            Log::error('AI Model show error: ' . $e->getMessage());
-            return response()->json(['error' => 'AI Model not found'], 404);
+        if (!$model) {
+            return response()->json([
+                'message' => 'AI model not found'
+            ], 404);
         }
+
+        return response()->json($model);
     }
 
     /**
      * Update the specified AI model.
      *
-     * @param Request $request
-     * @param string $id
-     * @return JsonResponse
+     * @param UpdateAIModelRequest $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function update(Request $request, string $id): JsonResponse
+    public function update(UpdateAIModelRequest $request, $id)
     {
-        $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|string|max:255',
-            'model_id' => 'sometimes|string|max:255',
-            'provider_type' => 'sometimes|string|max:100',
-            'ai_provider_id' => 'nullable|exists:a_i_providers,id',
-            'description' => 'nullable|string|max:1000',
-            'temperature' => 'nullable|numeric|min:0|max:2',
-            'max_tokens' => 'nullable|integer|min:1|max:32000',
-            'system_prompt' => 'nullable|string',
-            'capabilities' => 'nullable|array',
-            'configuration' => 'nullable|array',
-            'is_active' => 'nullable|boolean',
-            'is_featured' => 'nullable|boolean',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
         try {
-            $model = AIModel::where('user_id', Auth::id())->findOrFail($id);
+            $model = AIModel::where('id', $id)
+                ->where('user_id', Auth::id())
+                ->first();
 
-            // Verify AI provider belongs to user if provided
-            if ($request->has('ai_provider_id') && $request->ai_provider_id) {
-                $aiProvider = AIProvider::where('id', $request->ai_provider_id)
-                                      ->where('user_id', Auth::id())
-                                      ->first();
-                if (!$aiProvider) {
-                    return response()->json(['error' => 'AI Provider not found'], 404);
-                }
+            if (!$model) {
+                return response()->json([
+                    'message' => 'AI model not found'
+                ], 404);
             }
 
-            $model->update($request->only([
-                'name', 'model_id', 'provider_type', 'ai_provider_id', 'description',
-                'temperature', 'max_tokens', 'system_prompt', 'capabilities',
-                'configuration', 'is_active', 'is_featured'
-            ]));
+            $model->update($request->validated());
 
-            $model->load('aiProvider:id,provider_type,model');
-
-            Log::info('AI Model updated', ['model_id' => $model->id, 'user_id' => Auth::id()]);
-
-            return response()->json($model);
+            return response()->json([
+                'message' => 'AI model updated successfully',
+                'model' => $model
+            ]);
         } catch (\Exception $e) {
-            Log::error('AI Model update error: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to update AI model'], 500);
+            Log::error('Failed to update AI model', [
+                'id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to update AI model',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 
     /**
      * Remove the specified AI model.
      *
-     * @param string $id
-     * @return JsonResponse
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function destroy(string $id): JsonResponse
+    public function destroy($id)
     {
-        try {
-            $model = AIModel::where('user_id', Auth::id())->findOrFail($id);
-            $model->delete();
+        $model = AIModel::where('id', $id)
+            ->where('user_id', Auth::id())
+            ->first();
 
-            Log::info('AI Model deleted', ['model_id' => $id, 'user_id' => Auth::id()]);
-
-            return response()->json(null, 204);
-        } catch (\Exception $e) {
-            Log::error('AI Model deletion error: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to delete AI model'], 500);
+        if (!$model) {
+            return response()->json([
+                'message' => 'AI model not found'
+            ], 404);
         }
+
+        $model->delete();
+
+        return response()->json([
+            'message' => 'AI model deleted successfully'
+        ]);
     }
 
     /**
-     * Fetch available models from AI provider.
+     * Fetch available models from a provider.
      *
      * @param Request $request
-     * @return JsonResponse
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function fetchAvailableModels(Request $request): JsonResponse
+    public function fetchAvailableModels(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        $request->validate([
             'provider' => 'required|string',
-            'api_key' => 'required|string',
+            'api_key' => 'required|string'
         ]);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
         try {
-            $providerService = $this->aiService->getProvider($request->provider);
-            
-            if (method_exists($providerService, 'getAvailableModels')) {
-                $models = $providerService->getAvailableModels();
-                return response()->json([
-                    'success' => true,
-                    'models' => array_map(function($key, $name) {
-                        return ['id' => $key, 'name' => $name];
-                    }, array_keys($models), array_values($models))
-                ]);
-            }
+            $result = $this->modelService->fetchAvailableModels(
+                $request->provider,
+                $request->api_key
+            );
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch available models', [
+                'provider' => $request->provider,
+                'error' => $e->getMessage()
+            ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Provider does not support model listing'
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Fetch available models error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
+                'models' => []
             ], 500);
         }
     }
 
     /**
-     * Test an AI model.
+     * Test a specific model with a sample prompt.
      *
      * @param Request $request
-     * @return JsonResponse
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function testModel(Request $request): JsonResponse
+    public function testModel(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        $request->validate([
             'provider' => 'required|string',
             'model_id' => 'required|string',
             'api_key' => 'required|string',
             'temperature' => 'nullable|numeric|min:0|max:2',
             'max_tokens' => 'nullable|integer|min:1|max:32000',
-            'system_prompt' => 'nullable|string',
+            'system_prompt' => 'nullable|string'
         ]);
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
         try {
-            $startTime = microtime(true);
-            
             $config = [
                 'apiKey' => $request->api_key,
-                'model' => $request->model_id,
                 'temperature' => $request->temperature ?? 0.7,
-                'maxTokens' => $request->max_tokens ?? 100,
-                'systemPrompt' => $request->system_prompt ?? 'You are a helpful assistant.',
+                'maxTokens' => $request->max_tokens ?? 1000,
+                'systemPrompt' => $request->system_prompt
             ];
 
-            $result = $this->aiService->processMessage(
+            $result = $this->modelService->testModel(
                 $request->provider,
-                'Hello! This is a test message to verify the model is working correctly.',
+                $request->model_id,
                 $config
             );
 
-            $responseTime = microtime(true) - $startTime;
-
-            if ($result['success']) {
-                return response()->json([
-                    'success' => true,
-                    'response' => $result['response'],
-                    'metrics' => [
-                        'responseTime' => round($responseTime * 1000, 2),
-                        'tokenUsage' => $result['token_usage'] ?? null,
-                        'model' => $result['model'] ?? $request->model_id,
-                    ]
-                ]);
-            }
-
-            return response()->json([
-                'success' => false,
-                'message' => $result['message'] ?? 'Test failed'
-            ]);
+            return response()->json($result);
         } catch (\Exception $e) {
-            Log::error('AI Model test error: ' . $e->getMessage());
+            Log::error('Failed to test model', [
+                'provider' => $request->provider,
+                'model' => $request->model_id,
+                'error' => $e->getMessage()
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage()
@@ -345,54 +274,56 @@ class AIModelController extends Controller
     }
 
     /**
-     * Toggle active status of an AI model.
+     * Toggle the active status of an AI model.
      *
-     * @param string $id
-     * @return JsonResponse
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function toggleActive(string $id): JsonResponse
+    public function toggleActive($id)
     {
-        try {
-            $model = AIModel::where('user_id', Auth::id())->findOrFail($id);
-            $model->is_active = !$model->is_active;
-            $model->save();
+        $model = AIModel::where('id', $id)
+            ->where('user_id', Auth::id())
+            ->first();
 
-            Log::info('AI Model active status toggled', [
-                'model_id' => $model->id,
-                'is_active' => $model->is_active,
-                'user_id' => Auth::id()
-            ]);
-
-            return response()->json($model);
-        } catch (\Exception $e) {
-            Log::error('AI Model toggle active error: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to toggle model status'], 500);
+        if (!$model) {
+            return response()->json([
+                'message' => 'AI model not found'
+            ], 404);
         }
+
+        $model->is_active = !$model->is_active;
+        $model->save();
+
+        return response()->json([
+            'message' => 'AI model status updated successfully',
+            'is_active' => $model->is_active
+        ]);
     }
 
     /**
-     * Toggle featured status of an AI model.
+     * Toggle the featured status of an AI model.
      *
-     * @param string $id
-     * @return JsonResponse
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function toggleFeatured(string $id): JsonResponse
+    public function toggleFeatured($id)
     {
-        try {
-            $model = AIModel::where('user_id', Auth::id())->findOrFail($id);
-            $model->is_featured = !$model->is_featured;
-            $model->save();
+        $model = AIModel::where('id', $id)
+            ->where('user_id', Auth::id())
+            ->first();
 
-            Log::info('AI Model featured status toggled', [
-                'model_id' => $model->id,
-                'is_featured' => $model->is_featured,
-                'user_id' => Auth::id()
-            ]);
-
-            return response()->json($model);
-        } catch (\Exception $e) {
-            Log::error('AI Model toggle featured error: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to toggle featured status'], 500);
+        if (!$model) {
+            return response()->json([
+                'message' => 'AI model not found'
+            ], 404);
         }
+
+        $model->is_featured = !$model->is_featured;
+        $model->save();
+
+        return response()->json([
+            'message' => 'AI model featured status updated successfully',
+            'is_featured' => $model->is_featured
+        ]);
     }
 }

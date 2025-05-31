@@ -8,7 +8,6 @@ use App\Http\Controllers\API\WidgetController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\ApiTestingController;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -48,6 +47,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('ai-providers/test-connection', [AIProviderController::class, 'testConnection']);
     Route::post('ai-providers/generate-response', [AIProviderController::class, 'generateResponse']);
     Route::get('ai-providers/available', [AIProviderController::class, 'getAvailableProviders']);
+    Route::get('ai-providers/config/{providerType}', [AIProviderController::class, 'getProviderConfig']);
 
     // AI Model routes
     Route::apiResource('ai-models', AIModelController::class);

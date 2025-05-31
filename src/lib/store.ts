@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { ReactNode } from 'react';
 import { aiProviderApi, widgetApi } from './api';
 
 // Types
 export interface AIProvider {
-  [x: string]: ReactNode;
-  provider_type: ReactNode;
   id?: string;
+  provider_type: string;
   provider: string;
   apiKey: string;
   model: string;
@@ -60,6 +60,8 @@ export interface Widget {
   };
   status: string;
 }
+
+export type WidgetConfig = Pick<Widget, 'design' | 'behavior' | 'placement'>;
 
 interface AIProviderState {
   providers: AIProvider[];

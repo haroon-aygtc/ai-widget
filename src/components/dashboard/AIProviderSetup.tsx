@@ -23,36 +23,38 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle, AlertCircle, Settings, Key, Zap, Plus, Trash2, Edit, Eye, EyeOff, RefreshCw, Sparkles } from "lucide-react";
+import { CheckCircle, AlertCircle, Settings, Key, Zap, Plus, Trash2, Edit, Eye, EyeOff, RefreshCw, Sparkles, Loader2 } from "lucide-react";
 
 interface AIProviderSetupProps {
   onSave?: (config: AIProviderConfig) => void;
 }
 
 interface AIProviderConfig {
-  provider: string;
-  apiKey: string;
+  provider_type: string;
+  api_key: string;
   model: string;
   temperature: number;
-  maxTokens: number;
-  systemPrompt: string;
-  advancedSettings: {
-    streamResponse: boolean;
-    contextWindow: number;
-    topP: number;
-  };
+  max_tokens: number;
+  system_prompt: string;
+  stream_response: boolean;
+  context_window: number;
+  top_p: number;
+  is_active: boolean;
 }
 
 const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
-  onSave = () => {},
+  onSave = () => { },
 }) => {
   const [activeTab, setActiveTab] = useState<string>("providers");
   const [providers, setProviders] = useState<any[]>([]);
+  const [availableProviders, setAvailableProviders] = useState<any[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
-  
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
+
   // Form state for provider configuration
   const [formData, setFormData] = useState({
     provider_type: "openai",
@@ -66,76 +68,128 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     top_p: 0.95,
     is_active: true,
   });
-  
+
   const [testStatus, setTestStatus] = useState<
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [testMessage, setTestMessage] = useState<string>("");
 
-  const availableProviders = [
-    { id: "openai", name: "OpenAI", logo: "🤖", description: "GPT-4, GPT-3.5 Turbo models" },
-    { id: "gemini", name: "Google Gemini", logo: "🌀", description: "Gemini Pro, Ultra models" },
-    { id: "claude", name: "Anthropic Claude", logo: "🧠", description: "Claude 3 Opus, Sonnet, Haiku" },
-    { id: "mistral", name: "Mistral AI", logo: "🌪️", description: "Mistral Large, Medium, Small" },
-    { id: "groq", name: "Groq", logo: "⚡", description: "Ultra-fast inference" },
-    { id: "huggingface", name: "HuggingFace", logo: "🤗", description: "Open source models" },
-    { id: "grok", name: "Grok (X.AI)", logo: "✖️", description: "Grok-1 model" },
-    { id: "openrouter", name: "OpenRouter", logo: "🔄", description: "Multiple model access" },
-    { id: "deepseek", name: "DeepSeek", logo: "🔍", description: "DeepSeek Chat, Coder" },
-  ];
+  // Load providers and available provider configs on component mount
+  useEffect(() => {
+    fetchProviders();
+    fetchAvailableProviders();
+  }, []);
 
-  const modelsByProvider: Record<string, string[]> = {
-    openai: ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4-vision"],
-    gemini: ["gemini-pro", "gemini-ultra", "gemini-flash"],
-    claude: [
-      "claude-3-opus-20240229",
-      "claude-3-sonnet-20240229",
-      "claude-3-haiku-20240307",
-    ],
-    mistral: [
-      "mistral-large-latest",
-      "mistral-medium-latest",
-      "mistral-small-latest",
-    ],
-    groq: ["llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768"],
-    huggingface: [
-      "meta-llama/Llama-2-70b-chat-hf",
-      "mistralai/Mixtral-8x7B-Instruct-v0.1",
-      "google/gemma-7b",
-    ],
-    grok: ["grok-1"],
-    openrouter: [
-      "openai/gpt-4o",
-      "anthropic/claude-3-opus",
-      "meta-llama/llama-3-70b-instruct",
-    ],
-    deepseek: ["deepseek-chat", "deepseek-coder"],
+  const fetchProviders = async () => {
+    try {
+      setLoading(true);
+      const { aiProviderApi } = await import("@/lib/api");
+      const response = await aiProviderApi.getAll();
+
+      const providersData = response.data?.data || response.data || [];
+      setProviders(Array.isArray(providersData) ? providersData : []);
+    } catch (error) {
+      console.error("Failed to fetch providers:", error);
+      setProviders([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Load providers on component mount
-  useEffect(() => {
-    // Mock data - replace with actual API call
-    setProviders([
-      {
-        id: "1",
-        provider_type: "openai",
-        api_key: "sk-*********************",
-        model: "gpt-4o",
-        is_active: true,
-        created_at: "2024-01-15T10:30:00Z",
-        last_used: "2024-01-20T14:22:00Z",
-      },
-      {
-        id: "2",
-        provider_type: "claude",
-        api_key: "sk-ant-*********************",
-        model: "claude-3-opus-20240229",
-        is_active: false,
-        created_at: "2024-01-10T09:15:00Z",
-        last_used: "2024-01-18T16:45:00Z",
-      },
-    ]);
-  }, []);
+  const fetchAvailableProviders = async () => {
+    try {
+      const { aiProviderApi } = await import("@/lib/api");
+      const response = await aiProviderApi.getAvailableProviders();
+
+      if (response.data?.success && response.data?.providers) {
+        const providerConfigs = Object.entries(response.data.providers).map(([id, config]: [string, any]) => ({
+          id,
+          name: config.name,
+          logo: config.logo,
+          description: config.description,
+          default_model: config.default_model,
+          available_models: config.available_models,
+          default_settings: config.default_settings,
+          api_docs: config.api_docs,
+          pricing_url: config.pricing_url,
+        }));
+        setAvailableProviders(providerConfigs);
+      }
+    } catch (error) {
+      console.error("Failed to fetch available providers:", error);
+      // Fallback to static data
+  
+    }
+  };
+
+  const fetchModelsForProvider = async (providerType: string, apiKey: string) => {
+    if (!apiKey) return;
+
+    try {
+      setModelsLoading(true);
+      const { aiModelApi } = await import("@/lib/models-api");
+
+      const response = await aiModelApi.fetchAvailableModels({
+        provider: providerType,
+        api_key: apiKey,
+      });
+
+      if (response.data?.success && response.data?.models) {
+        const models = response.data.models.map((model: any) =>
+          typeof model === 'string' ? model : model.id || model.name
+        );
+
+        setAvailableModels(prev => ({
+          ...prev,
+          [providerType]: models
+        }));
+
+        // Update form data with first available model if current model is not in the list
+        if (models.length > 0 && !models.includes(formData.model)) {
+          setFormData(prev => ({ ...prev, model: models[0] }));
+        }
+      } else {
+        // Fallback to default models from provider config
+        const providerConfig = availableProviders.find(p => p.id === providerType);
+        if (providerConfig?.available_models) {
+          setAvailableModels(prev => ({
+            ...prev,
+            [providerType]: providerConfig.available_models
+          }));
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch models for provider:", error);
+
+      // Fallback to default models from provider config
+      const providerConfig = availableProviders.find(p => p.id === providerType);
+      if (providerConfig?.available_models) {
+        setAvailableModels(prev => ({
+          ...prev,
+          [providerType]: providerConfig.available_models
+        }));
+      }
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
+  const getAvailableModels = (providerType: string) => {
+    // First check if we have fetched models for this provider
+    if (availableModels[providerType]) {
+      return availableModels[providerType];
+    }
+
+    // Then check if we have a configured provider with models in advanced_settings
+    const configuredProvider = providers.find(p => p.provider_type === providerType);
+    if (configuredProvider?.advanced_settings?.available_models) {
+      return configuredProvider.advanced_settings.available_models;
+    }
+
+    // Finally, fallback to default models from available providers
+    const providerConfig = availableProviders.find(p => p.id === providerType);
+    return providerConfig?.available_models || [];
+  };
 
   const handleProviderSelect = (provider: any) => {
     setSelectedProvider(provider);
@@ -146,31 +200,82 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
       temperature: provider.temperature || 0.7,
       max_tokens: provider.max_tokens || 2048,
       system_prompt: provider.system_prompt || "You are a helpful assistant.",
-      stream_response: provider.stream_response ?? true,
-      context_window: provider.context_window || 4096,
-      top_p: provider.top_p || 0.95,
+      stream_response: provider.advanced_settings?.stream_response ?? true,
+      context_window: provider.advanced_settings?.context_window || 4096,
+      top_p: provider.advanced_settings?.top_p || 0.95,
       is_active: provider.is_active,
     });
     setIsEditing(true);
     setActiveTab("configure");
+
+    // Fetch models for this provider if we have an API key
+    if (provider.api_key) {
+      fetchModelsForProvider(provider.provider_type, provider.api_key);
+    }
   };
 
   const handleNewProvider = () => {
     setSelectedProvider(null);
+    const defaultProvider = availableProviders.find(p => p.id === "openai") || availableProviders[0];
     setFormData({
-      provider_type: "openai",
+      provider_type: defaultProvider?.id || "openai",
       api_key: "",
-      model: "gpt-4o",
-      temperature: 0.7,
-      max_tokens: 2048,
-      system_prompt: "You are a helpful assistant.",
-      stream_response: true,
-      context_window: 4096,
-      top_p: 0.95,
+      model: defaultProvider?.default_model || "gpt-4o",
+      temperature: defaultProvider?.default_settings?.temperature || 0.7,
+      max_tokens: defaultProvider?.default_settings?.max_tokens || 2048,
+      system_prompt: defaultProvider?.default_settings?.system_prompt || "You are a helpful assistant.",
+      stream_response: defaultProvider?.default_settings?.stream_response ?? true,
+      context_window: defaultProvider?.default_settings?.context_window || 4096,
+      top_p: defaultProvider?.default_settings?.top_p || 0.95,
       is_active: true,
     });
     setIsEditing(false);
     setActiveTab("configure");
+  };
+
+  const handleProviderTypeChange = async (providerType: string) => {
+    try {
+      const { aiProviderApi } = await import("@/lib/api");
+      const response = await aiProviderApi.getProviderConfig?.(providerType);
+
+      if (response?.data?.success && response.data?.config) {
+        const config = response.data.config;
+        setFormData(prev => ({
+          ...prev,
+          provider_type: providerType,
+          model: config.default_model,
+          temperature: config.default_settings.temperature,
+          max_tokens: config.default_settings.max_tokens,
+          system_prompt: config.default_settings.system_prompt,
+          stream_response: config.default_settings.stream_response,
+          context_window: config.default_settings.context_window,
+          top_p: config.default_settings.top_p,
+        }));
+      } else {
+        // Fallback to available provider data
+        const providerConfig = availableProviders.find(p => p.id === providerType);
+        if (providerConfig) {
+          setFormData(prev => ({
+            ...prev,
+            provider_type: providerType,
+            model: providerConfig.default_model,
+            temperature: providerConfig.default_settings?.temperature || 0.7,
+            max_tokens: providerConfig.default_settings?.max_tokens || 2048,
+            system_prompt: providerConfig.default_settings?.system_prompt || "You are a helpful assistant.",
+            stream_response: providerConfig.default_settings?.stream_response ?? true,
+            context_window: providerConfig.default_settings?.context_window || 4096,
+            top_p: providerConfig.default_settings?.top_p || 0.95,
+          }));
+        }
+      }
+
+      // If we have an API key, fetch models for the new provider
+      if (formData.api_key) {
+        fetchModelsForProvider(providerType, formData.api_key);
+      }
+    } catch (error) {
+      console.error("Failed to fetch provider config:", error);
+    }
   };
 
   const toggleApiKeyVisibility = (providerId: string) => {
@@ -181,7 +286,7 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
   };
 
   const handleTestConnection = async () => {
-    if (!apiKey) {
+    if (!formData.api_key) {
       setTestStatus("error");
       setTestMessage("API key is required");
       return;
@@ -196,20 +301,16 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
 
       // Call the test connection endpoint
       const response = await aiProviderApi.testConnection({
-        provider: activeProvider,
-        apiKey: apiKey,
+        provider: formData.provider_type,
+        apiKey: formData.api_key,
       });
 
       if (response.data.success) {
         setTestStatus("success");
         setTestMessage(response.data.message || "Connection successful!");
 
-        // If models were returned, update the model dropdown
-        if (response.data.models && response.data.models.length > 0) {
-          // Update the modelsByProvider for this provider
-          const updatedModels = [...response.data.models];
-          setModel(updatedModels[0]); // Set the first model as selected
-        }
+        // Fetch available models after successful connection
+        await fetchModelsForProvider(formData.provider_type, formData.api_key);
       } else {
         setTestStatus("error");
         setTestMessage(
@@ -225,35 +326,66 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
 
   const handleSaveConfiguration = async () => {
     const config: AIProviderConfig = {
-      provider: activeProvider,
-      apiKey,
-      model,
-      temperature,
-      maxTokens,
-      systemPrompt,
-      advancedSettings: {
-        streamResponse,
-        contextWindow,
-        topP,
-      },
+      provider_type: formData.provider_type,
+      api_key: formData.api_key,
+      model: formData.model,
+      temperature: formData.temperature,
+      max_tokens: formData.max_tokens,
+      system_prompt: formData.system_prompt,
+      stream_response: formData.stream_response,
+      context_window: formData.context_window,
+      top_p: formData.top_p,
+      is_active: formData.is_active,
     };
 
     try {
-      // Import the store
-      const { useAIProviderStore } = await import("@/lib/store");
-      const createProvider = useAIProviderStore.getState().createProvider;
+      setLoading(true);
+      const { aiProviderApi } = await import("@/lib/api");
 
-      // Call the create function
-      await createProvider(config);
+      if (isEditing && selectedProvider) {
+        // Update existing provider
+        await aiProviderApi.update(selectedProvider.id, config);
+        alert("AI Provider configuration updated successfully!");
+      } else {
+        // Create new provider
+        await aiProviderApi.create(config);
+        alert("AI Provider configuration saved successfully!");
+      }
+
+      // Refresh providers list
+      await fetchProviders();
 
       // Call the onSave callback
       onSave(config);
 
-      // Show success message
-      alert("AI Provider configuration saved successfully!");
+      // Reset form and go back to providers tab
+      setActiveTab("providers");
     } catch (error) {
       console.error("Save configuration error:", error);
       alert("Failed to save configuration. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteProvider = async (providerId: string) => {
+    if (!confirm("Are you sure you want to delete this provider?")) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const { aiProviderApi } = await import("@/lib/api");
+      await aiProviderApi.delete(providerId);
+
+      // Refresh providers list
+      await fetchProviders();
+      alert("Provider deleted successfully!");
+    } catch (error) {
+      console.error("Delete provider error:", error);
+      alert("Failed to delete provider. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -363,6 +495,7 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                           variant="outline"
                           size="sm"
                           className="gap-2 text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteProvider(provider.id)}
                         >
                           <Trash2 className="h-4 w-4" />
                           Remove
@@ -417,194 +550,251 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
           </Card>
         </TabsContent>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Provider Configuration</CardTitle>
-            <CardDescription>
-              Set up your {providers.find((p) => p.id === activeProvider)?.name}{" "}
-              integration
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="basic" className="w-full">
-              <TabsList className="grid grid-cols-2 w-full max-w-[400px]">
-                <TabsTrigger value="basic">Basic Settings</TabsTrigger>
-                <TabsTrigger value="advanced">Advanced Settings</TabsTrigger>
-              </TabsList>
+        {/* Configure Tab */}
+        <TabsContent value="configure" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Provider Configuration</CardTitle>
+              <CardDescription>
+                Set up your {availableProviders.find((p) => p.id === formData.provider_type)?.name}{" "}
+                integration
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="basic" className="w-full">
+                <TabsList className="grid grid-cols-2 w-full max-w-[400px]">
+                  <TabsTrigger value="basic">Basic Settings</TabsTrigger>
+                  <TabsTrigger value="advanced">Advanced Settings</TabsTrigger>
+                </TabsList>
 
-              <TabsContent value="basic" className="space-y-6 pt-4">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="api-key">API Key</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="api-key"
-                        type="password"
-                        placeholder={`Enter your ${activeProvider} API key`}
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={handleTestConnection}
+                <TabsContent value="basic" className="space-y-6 pt-4">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="provider-type">Provider Type</Label>
+                      <Select
+                        value={formData.provider_type}
+                        onValueChange={handleProviderTypeChange}
                       >
-                        <Zap className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    {testStatus === "success" && (
-                      <Alert
-                        variant="default"
-                        className="bg-green-50 text-green-800 border-green-200"
-                      >
-                        <CheckCircle className="h-4 w-4" />
-                        <AlertDescription>{testMessage}</AlertDescription>
-                      </Alert>
-                    )}
-                    {testStatus === "error" && (
-                      <Alert variant="destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>{testMessage}</AlertDescription>
-                      </Alert>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="model">Model</Label>
-                    <Select value={model} onValueChange={setModel}>
-                      <SelectTrigger id="model">
-                        <SelectValue placeholder="Select model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {modelsByProvider[activeProvider]?.map(
-                          (modelOption) => (
-                            <SelectItem key={modelOption} value={modelOption}>
-                              {modelOption}
+                        <SelectTrigger id="provider-type">
+                          <SelectValue placeholder="Select provider type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableProviders.map((provider) => (
+                            <SelectItem key={provider.id} value={provider.id}>
+                              <div className="flex items-center gap-2">
+                                <span>{provider.logo}</span>
+                                <span>{provider.name}</span>
+                              </div>
                             </SelectItem>
-                          ),
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="api-key">API Key</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="api-key"
+                          type="password"
+                          placeholder={`Enter your ${formData.provider_type} API key`}
+                          value={formData.api_key}
+                          onChange={(e) => setFormData(prev => ({ ...prev, api_key: e.target.value }))}
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={handleTestConnection}
+                          disabled={!formData.api_key || testStatus === "loading"}
+                        >
+                          {testStatus === "loading" ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Zap className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                      {testStatus === "success" && (
+                        <Alert
+                          variant="default"
+                          className="bg-green-50 text-green-800 border-green-200"
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                          <AlertDescription>{testMessage}</AlertDescription>
+                        </Alert>
+                      )}
+                      {testStatus === "error" && (
+                        <Alert variant="destructive">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>{testMessage}</AlertDescription>
+                        </Alert>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="model">
+                        Model
+                        {modelsLoading && (
+                          <Loader2 className="h-4 w-4 animate-spin inline ml-2" />
                         )}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      </Label>
+                      <Select
+                        value={formData.model}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, model: value }))}
+                        disabled={modelsLoading}
+                      >
+                        <SelectTrigger id="model">
+                          <SelectValue placeholder="Select model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getAvailableModels(formData.provider_type)?.map(
+                            (modelOption) => (
+                              <SelectItem key={modelOption} value={modelOption}>
+                                {modelOption}
+                              </SelectItem>
+                            ),
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {formData.api_key && !modelsLoading && getAvailableModels(formData.provider_type).length === 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          No models available. Try testing the connection first.
+                        </p>
+                      )}
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="temperature">
-                      Temperature: {temperature}
-                    </Label>
-                    <Input
-                      id="temperature"
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      value={temperature}
-                      onChange={(e) =>
-                        setTemperature(parseFloat(e.target.value))
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Controls randomness: Lower values are more deterministic,
-                      higher values more creative
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="max-tokens">Max Tokens</Label>
-                    <Input
-                      id="max-tokens"
-                      type="number"
-                      value={maxTokens}
-                      onChange={(e) => setMaxTokens(parseInt(e.target.value))}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Maximum number of tokens to generate in the response
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="system-prompt">System Prompt</Label>
-                    <textarea
-                      id="system-prompt"
-                      className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                      placeholder="Instructions for the AI assistant"
-                      value={systemPrompt}
-                      onChange={(e) => setSystemPrompt(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Instructions that define how the AI assistant should
-                      behave
-                    </p>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="advanced" className="space-y-6 pt-4">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label htmlFor="stream-response">Stream Response</Label>
+                    <div className="space-y-2">
+                      <Label htmlFor="temperature">
+                        Temperature: {formData.temperature}
+                      </Label>
+                      <Input
+                        id="temperature"
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={formData.temperature}
+                        onChange={(e) =>
+                          setFormData(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))
+                        }
+                      />
                       <p className="text-xs text-muted-foreground">
-                        Show responses as they are generated
+                        Controls randomness: Lower values are more deterministic,
+                        higher values more creative
                       </p>
                     </div>
-                    <Switch
-                      id="stream-response"
-                      checked={streamResponse}
-                      onCheckedChange={setStreamResponse}
-                    />
-                  </div>
 
-                  <Separator />
+                    <div className="space-y-2">
+                      <Label htmlFor="max-tokens">Max Tokens</Label>
+                      <Input
+                        id="max-tokens"
+                        type="number"
+                        value={formData.max_tokens}
+                        onChange={(e) => setFormData(prev => ({ ...prev, max_tokens: parseInt(e.target.value) }))}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Maximum number of tokens to generate in the response
+                      </p>
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="context-window">Context Window</Label>
-                    <Input
-                      id="context-window"
-                      type="number"
-                      value={contextWindow}
-                      onChange={(e) =>
-                        setContextWindow(parseInt(e.target.value))
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Number of previous messages to include as context
-                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="system-prompt">System Prompt</Label>
+                      <textarea
+                        id="system-prompt"
+                        className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        placeholder="Instructions for the AI assistant"
+                        value={formData.system_prompt}
+                        onChange={(e) => setFormData(prev => ({ ...prev, system_prompt: e.target.value }))}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Instructions that define how the AI assistant should
+                        behave
+                      </p>
+                    </div>
                   </div>
+                </TabsContent>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="top-p">Top P: {topP}</Label>
-                    <Input
-                      id="top-p"
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={topP}
-                      onChange={(e) => setTopP(parseFloat(e.target.value))}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Controls diversity via nucleus sampling
-                    </p>
-                  </div>
+                <TabsContent value="advanced" className="space-y-6 pt-4">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label htmlFor="stream-response">Stream Response</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Show responses as they are generated
+                        </p>
+                      </div>
+                      <Switch
+                        id="stream-response"
+                        checked={formData.stream_response}
+                        onCheckedChange={(checked) => setFormData(prev => ({ ...prev, stream_response: checked }))}
+                      />
+                    </div>
 
-                  <div className="pt-4">
-                    <Button variant="outline" className="w-full" size="sm">
-                      <Settings className="mr-2 h-4 w-4" />
-                      Additional Provider Settings
-                    </Button>
+                    <Separator />
+
+                    <div className="space-y-2">
+                      <Label htmlFor="context-window">Context Window</Label>
+                      <Input
+                        id="context-window"
+                        type="number"
+                        value={formData.context_window}
+                        onChange={(e) =>
+                          setFormData(prev => ({ ...prev, context_window: parseInt(e.target.value) }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Number of previous messages to include as context
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="top-p">Top P: {formData.top_p}</Label>
+                      <Input
+                        id="top-p"
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={formData.top_p}
+                        onChange={(e) => setFormData(prev => ({ ...prev, top_p: parseFloat(e.target.value) }))}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Controls diversity via nucleus sampling
+                      </p>
+                    </div>
+
+                    <div className="pt-4">
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        size="sm"
+                        onClick={() => formData.api_key && fetchModelsForProvider(formData.provider_type, formData.api_key)}
+                        disabled={!formData.api_key || modelsLoading}
+                      >
+                        {modelsLoading ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Settings className="mr-2 h-4 w-4" />
+                        )}
+                        Refresh Available Models
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-          <CardFooter className="flex justify-between">
-            <Button variant="outline">Reset to Defaults</Button>
-            <Button onClick={handleSaveConfiguration}>
-              Save Configuration
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+            <CardFooter className="flex justify-between">
+              <Button variant="outline">Reset to Defaults</Button>
+              <Button onClick={handleSaveConfiguration} disabled={loading}>
+                {loading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Save Configuration
+              </Button>
+            </CardFooter>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
