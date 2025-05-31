@@ -23,6 +23,15 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/use-toast";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   CheckCircle,
   AlertCircle,
@@ -37,6 +46,13 @@ import {
   RefreshCw,
   Sparkles,
   Loader2,
+  Info,
+  Check,
+  X,
+  ToggleLeft,
+  ToggleRight,
+  ChevronRight,
+  Shield,
 } from "lucide-react";
 
 interface AIProviderSetupProps {
@@ -59,6 +75,7 @@ interface AIProviderConfig {
 const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
   onSave = () => {},
 }) => {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("providers");
   const [providers, setProviders] = useState<any[]>([]);
   const [availableProviders, setAvailableProviders] = useState<any[]>([]);
@@ -110,6 +127,12 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     } catch (error) {
       console.error("Failed to fetch providers:", error);
       setProviders([]);
+      toast({
+        variant: "destructive",
+        title: "Error fetching providers",
+        description:
+          "Could not load your AI providers. Please try again later.",
+      });
     } finally {
       setLoading(false);
     }
@@ -145,6 +168,12 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     } catch (error) {
       console.error("Failed to fetch available providers:", error);
       setAvailableProviders([]);
+      toast({
+        variant: "destructive",
+        title: "Error fetching available providers",
+        description:
+          "Could not load available AI providers. Please try again later.",
+      });
     }
   };
 
@@ -202,6 +231,12 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
           [providerType]: providerConfig.available_models,
         }));
       }
+      toast({
+        variant: "destructive",
+        title: "Error fetching models",
+        description:
+          "Could not load models for this provider. Using default models instead.",
+      });
     } finally {
       setModelsLoading(false);
     }
@@ -273,6 +308,8 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     });
     setIsEditing(false);
     setActiveTab("configure");
+    setTestStatus("idle");
+    setTestMessage("");
   };
 
   const handleProviderTypeChange = async (providerType: string) => {
@@ -311,6 +348,12 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
       }
     } catch (error) {
       console.error("Failed to update provider config:", error);
+      toast({
+        variant: "destructive",
+        title: "Error updating provider",
+        description:
+          "Could not update provider configuration. Please try again.",
+      });
     }
   };
 
@@ -347,16 +390,36 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
 
         // Fetch available models after successful connection
         await fetchModelsForProvider(formData.provider_type, formData.api_key);
+
+        toast({
+          title: "Connection successful",
+          description: "Successfully connected to the AI provider.",
+          variant: "default",
+        });
       } else {
         setTestStatus("error");
         setTestMessage(
           response.data.message || "Invalid API key or connection failed",
         );
+
+        toast({
+          variant: "destructive",
+          title: "Connection failed",
+          description:
+            response.data.message || "Invalid API key or connection failed",
+        });
       }
     } catch (error) {
       setTestStatus("error");
       setTestMessage("Connection failed. Please try again.");
       console.error("Test connection error:", error);
+
+      toast({
+        variant: "destructive",
+        title: "Connection error",
+        description:
+          "Failed to test connection. Please check your network and try again.",
+      });
     }
   };
 
@@ -382,18 +445,21 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
       if (isEditing && selectedProvider) {
         // Update existing provider
         response = await aiProviderApi.update(selectedProvider.id, config);
+        toast({
+          title: "Provider updated",
+          description:
+            "AI Provider configuration has been updated successfully.",
+          variant: "default",
+        });
       } else {
         // Create new provider
         response = await aiProviderApi.create(config);
+        toast({
+          title: "Provider created",
+          description: "New AI Provider has been created successfully.",
+          variant: "default",
+        });
       }
-
-      // Show success message from API response
-      const message =
-        response.data?.message ||
-        (isEditing
-          ? "AI Provider updated successfully!"
-          : "AI Provider created successfully!");
-      alert(message);
 
       // Refresh providers list
       await fetchProviders();
@@ -409,30 +475,31 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
         error.response?.data?.message ||
         error.response?.data?.errors ||
         "Failed to save configuration. Please try again.";
-      alert(
-        typeof errorMessage === "string"
-          ? errorMessage
-          : JSON.stringify(errorMessage),
-      );
+
+      toast({
+        variant: "destructive",
+        title: "Save failed",
+        description:
+          typeof errorMessage === "string"
+            ? errorMessage
+            : JSON.stringify(errorMessage),
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteProvider = async (providerId: string) => {
-    if (!confirm("Are you sure you want to delete this provider?")) {
-      return;
-    }
-
     try {
       setLoading(true);
       const { aiProviderApi } = await import("@/lib/api");
       const response = await aiProviderApi.delete(providerId);
 
-      // Show success message from API response
-      const message =
-        response.data?.message || "Provider deleted successfully!";
-      alert(message);
+      toast({
+        title: "Provider deleted",
+        description: "AI Provider has been removed successfully.",
+        variant: "default",
+      });
 
       // Refresh providers list
       await fetchProviders();
@@ -441,9 +508,20 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
       const errorMessage =
         error.response?.data?.message ||
         "Failed to delete provider. Please try again.";
-      alert(errorMessage);
+
+      toast({
+        variant: "destructive",
+        title: "Delete failed",
+        description: errorMessage,
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const confirmDeleteProvider = (providerId: string) => {
+    if (window.confirm("Are you sure you want to delete this provider?")) {
+      handleDeleteProvider(providerId);
     }
   };
 
@@ -494,7 +572,14 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {providers.length === 0 ? (
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <span className="ml-2 text-muted-foreground">
+                    Loading providers...
+                  </span>
+                </div>
+              ) : providers.length === 0 ? (
                 <div className="text-center py-12">
                   <Sparkles className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <h3 className="text-lg font-semibold mb-2">
@@ -513,80 +598,135 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                   {providers.map((provider) => (
                     <div
                       key={provider.id}
-                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                      className="flex flex-col md:flex-row md:items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors gap-4"
                     >
                       <div className="flex items-center gap-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                          <span className="text-lg">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 shadow-sm">
+                          <span className="text-xl">
                             {availableProviders.find(
                               (p) => p.id === provider.provider_type,
                             )?.logo || "🤖"}
                           </span>
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold capitalize">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold capitalize text-lg">
                               {provider.provider_type}
                             </h3>
                             <Badge
                               variant={
                                 provider.is_active ? "default" : "secondary"
                               }
+                              className="ml-2"
                             >
-                              {provider.is_active ? "Active" : "Inactive"}
+                              {provider.is_active ? (
+                                <span className="flex items-center gap-1">
+                                  <CheckCircle className="h-3 w-3" /> Active
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1">
+                                  <AlertCircle className="h-3 w-3" /> Inactive
+                                </span>
+                              )}
                             </Badge>
                           </div>
-                          <p className="text-sm text-muted-foreground">
-                            Model: {provider.model} •{" "}
-                            {provider.last_used
-                              ? `Last used: ${new Date(provider.last_used).toLocaleDateString()}`
-                              : "Never used"}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              <span className="font-medium">Model:</span>
+                              <Badge
+                                variant="outline"
+                                className="font-mono text-xs"
+                              >
+                                {provider.model}
+                              </Badge>
+                            </div>
+                            <span className="hidden sm:inline">•</span>
+                            <div>
+                              {provider.last_used
+                                ? `Last used: ${new Date(provider.last_used).toLocaleDateString()}`
+                                : "Never used"}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 mt-2">
                             <span className="text-xs text-muted-foreground">
                               API Key:
                             </span>
-                            <code className="text-xs bg-muted px-1 rounded">
+                            <code className="text-xs bg-muted px-2 py-1 rounded font-mono">
                               {showApiKey[provider.id]
                                 ? provider.api_key
-                                : provider.api_key.replace(/./g, "*")}
+                                : provider.api_key.replace(/./g, "•")}
                             </code>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() =>
-                                toggleApiKeyVisibility(provider.id)
-                              }
-                            >
-                              {showApiKey[provider.id] ? (
-                                <EyeOff className="h-3 w-3" />
-                              ) : (
-                                <Eye className="h-3 w-3" />
-                              )}
-                            </Button>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() =>
+                                      toggleApiKeyVisibility(provider.id)
+                                    }
+                                  >
+                                    {showApiKey[provider.id] ? (
+                                      <EyeOff className="h-3 w-3" />
+                                    ) : (
+                                      <Eye className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>
+                                    {showApiKey[provider.id] ? "Hide" : "Show"}{" "}
+                                    API key
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleProviderSelect(provider)}
-                          className="gap-2"
-                        >
-                          <Edit className="h-4 w-4" />
-                          Configure
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2 text-destructive hover:text-destructive"
-                          onClick={() => handleDeleteProvider(provider.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Remove
-                        </Button>
+                      <div className="flex items-center gap-2 mt-4 md:mt-0">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleProviderSelect(provider)}
+                                className="gap-2"
+                              >
+                                <Edit className="h-4 w-4" />
+                                <span className="hidden sm:inline">
+                                  Configure
+                                </span>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Edit provider configuration</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() =>
+                                  confirmDeleteProvider(provider.id)
+                                }
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                <span className="hidden sm:inline">Remove</span>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Delete this provider</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </div>
                     </div>
                   ))}
@@ -607,56 +747,77 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {availableProviders.map((provider) => (
-                  <Card
-                    key={provider.id}
-                    className="cursor-pointer hover:shadow-md transition-shadow"
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex items-center gap-3 mb-3">
-                        <span className="text-2xl">{provider.logo}</span>
-                        <div>
-                          <h3 className="font-semibold">{provider.name}</h3>
-                          <p className="text-xs text-muted-foreground">
-                            {provider.description}
-                          </p>
-                          {provider.supported_features && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {provider.supported_features
-                                .slice(0, 2)
-                                .map((feature: string) => (
-                                  <Badge
-                                    key={feature}
-                                    variant="outline"
-                                    className="text-xs px-1 py-0"
-                                  >
-                                    {feature.replace("_", " ")}
-                                  </Badge>
-                                ))}
+              {availableProviders.length === 0 ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <span className="ml-2 text-muted-foreground">
+                    Loading available providers...
+                  </span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {availableProviders.map((provider) => (
+                    <Card
+                      key={provider.id}
+                      className="cursor-pointer hover:shadow-md transition-shadow border-primary/10 hover:border-primary/30"
+                    >
+                      <CardContent className="p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 shadow-sm">
+                            <span className="text-2xl">{provider.logo}</span>
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-lg">
+                              {provider.name}
+                            </h3>
+                            <p className="text-xs text-muted-foreground">
+                              {provider.description}
+                            </p>
+                          </div>
+                        </div>
+
+                        {provider.supported_features &&
+                          provider.supported_features.length > 0 && (
+                            <div className="mb-4">
+                              <p className="text-xs font-medium mb-2">
+                                Supported Features:
+                              </p>
+                              <div className="flex flex-wrap gap-1">
+                                {provider.supported_features.map(
+                                  (feature: string) => (
+                                    <Badge
+                                      key={feature}
+                                      variant="outline"
+                                      className="text-xs px-1.5 py-0.5"
+                                    >
+                                      {feature.replace("_", " ")}
+                                    </Badge>
+                                  ),
+                                )}
+                              </div>
                             </div>
                           )}
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full gap-2"
-                        onClick={() => {
-                          setFormData((prev) => ({
-                            ...prev,
-                            provider_type: provider.id,
-                          }));
-                          handleNewProvider();
-                        }}
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add Provider
-                      </Button>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 mt-2 hover:bg-primary/10"
+                          onClick={() => {
+                            setFormData((prev) => ({
+                              ...prev,
+                              provider_type: provider.id,
+                            }));
+                            handleNewProvider();
+                          }}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Add Provider
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -665,7 +826,9 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
         <TabsContent value="configure" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Provider Configuration</CardTitle>
+              <CardTitle>
+                {isEditing ? "Edit Provider" : "New Provider"} Configuration
+              </CardTitle>
               <CardDescription>
                 Set up your{" "}
                 {
@@ -691,7 +854,10 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                         value={formData.provider_type}
                         onValueChange={handleProviderTypeChange}
                       >
-                        <SelectTrigger id="provider-type">
+                        <SelectTrigger
+                          id="provider-type"
+                          className="flex items-center gap-2"
+                        >
                           <SelectValue placeholder="Select provider type" />
                         </SelectTrigger>
                         <SelectContent>
@@ -721,26 +887,36 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                               api_key: e.target.value,
                             }))
                           }
+                          className="font-mono"
                         />
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={handleTestConnection}
-                          disabled={
-                            !formData.api_key || testStatus === "loading"
-                          }
-                        >
-                          {testStatus === "loading" ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Zap className="h-4 w-4" />
-                          )}
-                        </Button>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={handleTestConnection}
+                                disabled={
+                                  !formData.api_key || testStatus === "loading"
+                                }
+                              >
+                                {testStatus === "loading" ? (
+                                  <RefreshCw className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Zap className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Test connection</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </div>
                       {testStatus === "success" && (
                         <Alert
                           variant="default"
-                          className="bg-green-50 text-green-800 border-green-200"
+                          className="bg-green-50 dark:bg-green-950/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-900"
                         >
                           <CheckCircle className="h-4 w-4" />
                           <AlertDescription>{testMessage}</AlertDescription>
@@ -755,12 +931,15 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="model">
-                        Model
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="model">Model</Label>
                         {modelsLoading && (
-                          <Loader2 className="h-4 w-4 animate-spin inline ml-2" />
+                          <span className="text-xs text-muted-foreground flex items-center">
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            Loading models...
+                          </span>
                         )}
-                      </Label>
+                      </div>
                       <Select
                         value={formData.model}
                         onValueChange={(value) =>
@@ -808,22 +987,31 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="temperature">
-                        Temperature: {formData.temperature}
-                      </Label>
-                      <Input
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="temperature">
+                          Temperature: {formData.temperature.toFixed(1)}
+                        </Label>
+                        <span className="text-xs text-muted-foreground">
+                          {formData.temperature < 0.3
+                            ? "More deterministic"
+                            : formData.temperature > 0.7
+                              ? "More creative"
+                              : "Balanced"}
+                        </span>
+                      </div>
+                      <Slider
                         id="temperature"
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={formData.temperature}
-                        onChange={(e) =>
+                        min={0}
+                        max={1}
+                        step={0.1}
+                        value={[formData.temperature]}
+                        onValueChange={(value) =>
                           setFormData((prev) => ({
                             ...prev,
-                            temperature: parseFloat(e.target.value),
+                            temperature: value[0],
                           }))
                         }
+                        className="py-4"
                       />
                       <p className="text-xs text-muted-foreground">
                         Controls randomness: Lower values are more
@@ -851,9 +1039,8 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
 
                     <div className="space-y-2">
                       <Label htmlFor="system-prompt">System Prompt</Label>
-                      <textarea
+                      <Textarea
                         id="system-prompt"
-                        className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         placeholder="Instructions for the AI assistant"
                         value={formData.system_prompt}
                         onChange={(e) =>
@@ -862,11 +1049,36 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                             system_prompt: e.target.value,
                           }))
                         }
+                        className="min-h-[100px] resize-y"
                       />
                       <p className="text-xs text-muted-foreground">
                         Instructions that define how the AI assistant should
                         behave
                       </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2">
+                      <div>
+                        <Label htmlFor="is-active">Active Status</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Enable or disable this provider
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          {formData.is_active ? "Active" : "Inactive"}
+                        </span>
+                        <Switch
+                          id="is-active"
+                          checked={formData.is_active}
+                          onCheckedChange={(checked) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              is_active: checked,
+                            }))
+                          }
+                        />
+                      </div>
                     </div>
                   </div>
                 </TabsContent>
@@ -880,16 +1092,21 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                           Show responses as they are generated
                         </p>
                       </div>
-                      <Switch
-                        id="stream-response"
-                        checked={formData.stream_response}
-                        onCheckedChange={(checked) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            stream_response: checked,
-                          }))
-                        }
-                      />
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">
+                          {formData.stream_response ? "Enabled" : "Disabled"}
+                        </span>
+                        <Switch
+                          id="stream-response"
+                          checked={formData.stream_response}
+                          onCheckedChange={(checked) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              stream_response: checked,
+                            }))
+                          }
+                        />
+                      </div>
                     </div>
 
                     <Separator />
@@ -913,20 +1130,31 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="top-p">Top P: {formData.top_p}</Label>
-                      <Input
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="top-p">
+                          Top P: {formData.top_p.toFixed(2)}
+                        </Label>
+                        <span className="text-xs text-muted-foreground">
+                          {formData.top_p < 0.5
+                            ? "More focused"
+                            : formData.top_p > 0.8
+                              ? "More diverse"
+                              : "Balanced"}
+                        </span>
+                      </div>
+                      <Slider
                         id="top-p"
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={formData.top_p}
-                        onChange={(e) =>
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={[formData.top_p]}
+                        onValueChange={(value) =>
                           setFormData((prev) => ({
                             ...prev,
-                            top_p: parseFloat(e.target.value),
+                            top_p: value[0],
                           }))
                         }
+                        className="py-4"
                       />
                       <p className="text-xs text-muted-foreground">
                         Controls diversity via nucleus sampling
@@ -936,7 +1164,7 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                     <div className="pt-4">
                       <Button
                         variant="outline"
-                        className="w-full"
+                        className="w-full gap-2"
                         size="sm"
                         onClick={() =>
                           formData.api_key &&
@@ -950,7 +1178,7 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                         {modelsLoading ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : (
-                          <Settings className="mr-2 h-4 w-4" />
+                          <RefreshCw className="mr-2 h-4 w-4" />
                         )}
                         Refresh Available Models
                       </Button>
@@ -959,7 +1187,7 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                 </TabsContent>
               </Tabs>
             </CardContent>
-            <CardFooter className="flex justify-between">
+            <CardFooter className="flex justify-between border-t p-6">
               <Button
                 variant="outline"
                 onClick={() => {
@@ -986,20 +1214,35 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                     }));
                   }
                 }}
+                className="gap-2"
               >
+                <RefreshCw className="h-4 w-4" />
                 Reset to Defaults
               </Button>
-              <Button
-                onClick={handleSaveConfiguration}
-                disabled={
-                  loading || !formData.api_key || !formData.provider_type
-                }
-              >
-                {loading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                {isEditing ? "Update Configuration" : "Save Configuration"}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setActiveTab("providers")}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveConfiguration}
+                  disabled={
+                    loading || !formData.api_key || !formData.provider_type
+                  }
+                  className="gap-2"
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : isEditing ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                  {isEditing ? "Update Provider" : "Save Provider"}
+                </Button>
+              </div>
             </CardFooter>
           </Card>
         </TabsContent>
