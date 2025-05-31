@@ -78,7 +78,7 @@ interface ModelOption {
   description?: string;
 }
 
-type ViewMode = 'list' | 'create' | 'edit' | 'test';
+type ViewMode = "list" | "create" | "edit" | "test";
 
 const AIModelManagement: React.FC = () => {
   const { toast } = useToast();
@@ -128,6 +128,7 @@ const AIModelManagement: React.FC = () => {
       setLoading(true);
       const params = {
         page: currentPage,
+        per_page: 10,
         search: searchQuery || undefined,
         provider_type: providerFilter || undefined,
         is_active: activeFilter ? activeFilter === "active" : undefined,
@@ -135,7 +136,11 @@ const AIModelManagement: React.FC = () => {
 
       const response = await aiModelApi.getAll(params);
       console.log("Models API response:", response.data);
-      const modelsData = response.data?.data || response.data || [];
+
+      // Handle the new API response format
+      const modelsData = response.data?.success
+        ? response.data.data
+        : response.data?.data || response.data || [];
       setModels(Array.isArray(modelsData) ? modelsData : []);
 
       const total = response.data?.total || 0;
@@ -158,7 +163,11 @@ const AIModelManagement: React.FC = () => {
     try {
       const response = await aiProviderApi.getAll();
       console.log("Providers API response:", response.data);
-      const providersData = response.data?.data || response.data || [];
+
+      // Handle the new API response format
+      const providersData = response.data?.success
+        ? response.data.data
+        : response.data?.data || response.data || [];
       setProviders(Array.isArray(providersData) ? providersData : []);
     } catch (error) {
       console.error("Failed to fetch providers:", error);
@@ -268,9 +277,10 @@ const AIModelManagement: React.FC = () => {
 
     try {
       const response = await aiModelApi.create(formData);
+      const message = response.data?.message || "AI model created successfully";
       toast({
         title: "Success",
-        description: "AI model created successfully",
+        description: message,
       });
       resetForm();
       fetchModels();
@@ -303,9 +313,10 @@ const AIModelManagement: React.FC = () => {
 
     try {
       const response = await aiModelApi.update(selectedModel.id, formData);
+      const message = response.data?.message || "AI model updated successfully";
       toast({
         title: "Success",
-        description: "AI model updated successfully",
+        description: message,
       });
       resetForm();
       fetchModels();
@@ -337,16 +348,19 @@ const AIModelManagement: React.FC = () => {
     if (!confirm("Are you sure you want to delete this model?")) return;
 
     try {
-      await aiModelApi.delete(id);
+      const response = await aiModelApi.delete(id);
+      const message = response.data?.message || "AI model deleted successfully";
       toast({
         title: "Success",
-        description: "AI model deleted successfully",
+        description: message,
       });
       fetchModels();
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.message || "Failed to delete AI model";
       toast({
         title: "Error",
-        description: "Failed to delete AI model",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -355,15 +369,20 @@ const AIModelManagement: React.FC = () => {
   const handleToggleActive = async (id: string) => {
     try {
       const response = await aiModelApi.toggleActive(id);
+      const message =
+        response.data?.message ||
+        `Model ${response.data?.data?.is_active ? "activated" : "deactivated"} successfully`;
       toast({
         title: "Success",
-        description: `Model ${response.data.is_active ? "activated" : "deactivated"} successfully`,
+        description: message,
       });
       fetchModels();
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.message || "Failed to update model status";
       toast({
         title: "Error",
-        description: "Failed to update model status",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -372,15 +391,20 @@ const AIModelManagement: React.FC = () => {
   const handleToggleFeatured = async (id: string) => {
     try {
       const response = await aiModelApi.toggleFeatured(id);
+      const message =
+        response.data?.message ||
+        `Model ${response.data?.data?.is_featured ? "featured" : "unfeatured"} successfully`;
       toast({
         title: "Success",
-        description: `Model ${response.data.is_featured ? "featured" : "unfeatured"} successfully`,
+        description: message,
       });
       fetchModels();
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage =
+        error.response?.data?.message || "Failed to update featured status";
       toast({
         title: "Error",
-        description: "Failed to update featured status",
+        description: errorMessage,
         variant: "destructive",
       });
     }

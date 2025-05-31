@@ -102,7 +102,10 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
       const { aiProviderApi } = await import("@/lib/api");
       const response = await aiProviderApi.getAll();
 
-      const providersData = response.data?.data || response.data || [];
+      // Handle the new API response format
+      const providersData = response.data?.success
+        ? response.data.data
+        : response.data?.data || response.data || [];
       setProviders(Array.isArray(providersData) ? providersData : []);
     } catch (error) {
       console.error("Failed to fetch providers:", error);
@@ -375,15 +378,22 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
       setLoading(true);
       const { aiProviderApi } = await import("@/lib/api");
 
+      let response;
       if (isEditing && selectedProvider) {
         // Update existing provider
-        await aiProviderApi.update(selectedProvider.id, config);
-        alert("AI Provider configuration updated successfully!");
+        response = await aiProviderApi.update(selectedProvider.id, config);
       } else {
         // Create new provider
-        await aiProviderApi.create(config);
-        alert("AI Provider configuration saved successfully!");
+        response = await aiProviderApi.create(config);
       }
+
+      // Show success message from API response
+      const message =
+        response.data?.message ||
+        (isEditing
+          ? "AI Provider updated successfully!"
+          : "AI Provider created successfully!");
+      alert(message);
 
       // Refresh providers list
       await fetchProviders();
@@ -393,9 +403,17 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
 
       // Reset form and go back to providers tab
       setActiveTab("providers");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Save configuration error:", error);
-      alert("Failed to save configuration. Please try again.");
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.errors ||
+        "Failed to save configuration. Please try again.";
+      alert(
+        typeof errorMessage === "string"
+          ? errorMessage
+          : JSON.stringify(errorMessage),
+      );
     } finally {
       setLoading(false);
     }
@@ -409,14 +427,21 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     try {
       setLoading(true);
       const { aiProviderApi } = await import("@/lib/api");
-      await aiProviderApi.delete(providerId);
+      const response = await aiProviderApi.delete(providerId);
+
+      // Show success message from API response
+      const message =
+        response.data?.message || "Provider deleted successfully!";
+      alert(message);
 
       // Refresh providers list
       await fetchProviders();
-      alert("Provider deleted successfully!");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Delete provider error:", error);
-      alert("Failed to delete provider. Please try again.");
+      const errorMessage =
+        error.response?.data?.message ||
+        "Failed to delete provider. Please try again.";
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }

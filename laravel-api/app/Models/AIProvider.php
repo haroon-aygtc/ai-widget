@@ -114,4 +114,28 @@ class AIProvider extends Model
     {
         return $this->hasMany(AIModel::class);
     }
+
+    /**
+     * Scope to get active providers only.
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    /**
+     * Scope to get providers by type.
+     */
+    public function scopeByType($query, string $type)
+    {
+        return $query->where('provider_type', $type);
+    }
+
+    /**
+     * Update the last used timestamp.
+     */
+    public function updateLastUsed(): void
+    {
+        $this->update(['last_used' => now()]);
+    }
 }

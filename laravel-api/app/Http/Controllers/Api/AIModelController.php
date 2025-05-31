@@ -65,7 +65,14 @@ class AIModelController extends Controller
         $perPage = $request->get('per_page', 10);
         $models = $query->paginate($perPage);
 
-        return response()->json($models);
+        return response()->json([
+            'success' => true,
+            'data' => $models->items(),
+            'total' => $models->total(),
+            'per_page' => $models->perPage(),
+            'current_page' => $models->currentPage(),
+            'last_page' => $models->lastPage()
+        ]);
     }
 
     /**
@@ -92,8 +99,9 @@ class AIModelController extends Controller
             $model = AIModel::create($data);
 
             return response()->json([
-                'message' => 'AI model created successfully',
-                'model' => $model
+                'success' => true,
+                'data' => $model,
+                'message' => 'AI model created successfully'
             ], 201);
         } catch (\Exception $e) {
             Log::error('Failed to create AI model', [
@@ -102,6 +110,7 @@ class AIModelController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'message' => 'Failed to create AI model',
                 'error' => $e->getMessage()
             ], 500);
@@ -122,11 +131,15 @@ class AIModelController extends Controller
 
         if (!$model) {
             return response()->json([
+                'success' => false,
                 'message' => 'AI model not found'
             ], 404);
         }
 
-        return response()->json($model);
+        return response()->json([
+            'success' => true,
+            'data' => $model
+        ]);
     }
 
     /**
@@ -145,6 +158,7 @@ class AIModelController extends Controller
 
             if (!$model) {
                 return response()->json([
+                    'success' => false,
                     'message' => 'AI model not found'
                 ], 404);
             }
@@ -152,8 +166,9 @@ class AIModelController extends Controller
             $model->update($request->validated());
 
             return response()->json([
-                'message' => 'AI model updated successfully',
-                'model' => $model
+                'success' => true,
+                'data' => $model->fresh(),
+                'message' => 'AI model updated successfully'
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to update AI model', [
@@ -162,6 +177,7 @@ class AIModelController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'message' => 'Failed to update AI model',
                 'error' => $e->getMessage()
             ], 500);
@@ -182,6 +198,7 @@ class AIModelController extends Controller
 
         if (!$model) {
             return response()->json([
+                'success' => false,
                 'message' => 'AI model not found'
             ], 404);
         }
@@ -189,6 +206,7 @@ class AIModelController extends Controller
         $model->delete();
 
         return response()->json([
+            'success' => true,
             'message' => 'AI model deleted successfully'
         ]);
     }
@@ -287,6 +305,7 @@ class AIModelController extends Controller
 
         if (!$model) {
             return response()->json([
+                'success' => false,
                 'message' => 'AI model not found'
             ], 404);
         }
@@ -295,8 +314,9 @@ class AIModelController extends Controller
         $model->save();
 
         return response()->json([
-            'message' => 'AI model status updated successfully',
-            'is_active' => $model->is_active
+            'success' => true,
+            'data' => $model,
+            'message' => 'AI model status updated successfully'
         ]);
     }
 
@@ -314,6 +334,7 @@ class AIModelController extends Controller
 
         if (!$model) {
             return response()->json([
+                'success' => false,
                 'message' => 'AI model not found'
             ], 404);
         }
@@ -322,8 +343,9 @@ class AIModelController extends Controller
         $model->save();
 
         return response()->json([
-            'message' => 'AI model featured status updated successfully',
-            'is_featured' => $model->is_featured
+            'success' => true,
+            'data' => $model,
+            'message' => 'AI model featured status updated successfully'
         ]);
     }
 }

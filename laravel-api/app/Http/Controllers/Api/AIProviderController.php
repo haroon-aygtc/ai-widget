@@ -20,12 +20,18 @@ class AIProviderController extends Controller
     {
         $providers = AIProvider::where('user_id', Auth::id())->get();
 
-        // Mask API keys for security
+        // Mask API keys for security and add full API key for internal use
         $providers->each(function ($provider) {
-            $provider->api_key = $this->maskApiKey($provider->api_key);
+            $provider->masked_api_key = $this->maskApiKey($provider->api_key);
+            // Keep the full API key for backend operations but don't expose it
+            $provider->makeHidden(['api_key']);
+            $provider->setAttribute('api_key', $provider->masked_api_key);
         });
 
-        return response()->json($providers);
+        return response()->json([
+            'success' => true,
+            'data' => $providers
+        ]);
     }
 
     /**
@@ -52,8 +58,6 @@ class AIProviderController extends Controller
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
-
-        // Basic validation is already done above
 
         // Check if provider already exists for this user
         $existingProvider = AIProvider::where('user_id', Auth::id())
@@ -86,7 +90,11 @@ class AIProviderController extends Controller
         // Mask API key before returning
         $provider->api_key = $this->maskApiKey($provider->api_key);
 
-        return response()->json($provider, 201);
+        return response()->json([
+            'success' => true,
+            'data' => $provider,
+            'message' => 'AI Provider created successfully'
+        ], 201);
     }
 
     /**
@@ -133,8 +141,6 @@ class AIProviderController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        // Basic validation is already done above
-
         // Update fields
         if ($request->has('provider_type')) {
             $provider->provider_type = $request->provider_type;
@@ -170,15 +176,17 @@ class AIProviderController extends Controller
             $advancedSettings['top_p'] = $request->top_p;
         }
 
-        // Keep existing advanced settings structure
-
         $provider->advanced_settings = $advancedSettings;
         $provider->save();
 
         // Mask API key before returning
         $provider->api_key = $this->maskApiKey($provider->api_key);
 
-        return response()->json($provider);
+        return response()->json([
+            'success' => true,
+            'data' => $provider,
+            'message' => 'AI Provider updated successfully'
+        ]);
     }
 
     /**
@@ -192,7 +200,10 @@ class AIProviderController extends Controller
         $provider = AIProvider::where('user_id', Auth::id())->findOrFail($id);
         $provider->delete();
 
-        return response()->json(['message' => 'AI Provider deleted successfully']);
+        return response()->json([
+            'success' => true,
+            'message' => 'AI Provider deleted successfully'
+        ]);
     }
 
     /**
@@ -224,8 +235,6 @@ class AIProviderController extends Controller
         }
     }
 
-    // generateResponse method removed - use ChatController for AI responses
-
     /**
      * Get available AI providers with their configurations
      *
@@ -235,6 +244,20 @@ class AIProviderController extends Controller
     {
         try {
             $providers = AIServiceFactory::getAvailableProviders();
+
+            // Add default settings for each provider
+            foreach ($providers as $key => &$provider) {
+                $provider['default_settings'] = [
+                    'temperature' => 0.7,
+                    'max_tokens' => 2048,
+                    'system_prompt' => 'You are a helpful assistant.',
+                    'stream_response' => true,
+                    'context_window' => 4096,
+                    'top_p' => 0.95,
+                ];
+                $provider['default_model'] = $provider['models'][0] ?? 'default-model';
+                $provider['available_models'] = $provider['models'];
+            }
 
             return response()->json([
                 'success' => true,
@@ -249,7 +272,48 @@ class AIProviderController extends Controller
         }
     }
 
-    // getProviderConfig method removed - provider configs are now in AIServiceFactory
+    /**
+     * Get provider configuration by type
+     *
+     * @param string $providerType
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getProviderConfig(string $providerType)
+    {
+        try {
+            $providers = AIServiceFactory::getAvailableProviders();
+            
+            if (!isset($providers[$providerType])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Provider not found'
+                ], 404);
+            }
+
+            $provider = $providers[$providerType];
+            $provider['default_settings'] = [
+                'temperature' => 0.7,
+                'max_tokens' => 2048,
+                'system_prompt' => 'You are a helpful assistant.',
+                'stream_response' => true,
+                'context_window' => 4096,
+                'top_p' => 0.95,
+            ];
+            $provider['default_model'] = $provider['models'][0] ?? 'default-model';
+            $provider['available_models'] = $provider['models'];
+
+            return response()->json([
+                'success' => true,
+                'provider' => $provider
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch provider configuration',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 
     /**
      * Mask API key for security

@@ -68,4 +68,47 @@ class AIModel extends Model
     {
         return $this->belongsTo(AIProvider::class, 'ai_provider_id');
     }
+
+    /**
+     * Scope to get active models only.
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    /**
+     * Scope to get featured models only.
+     */
+    public function scopeFeatured($query)
+    {
+        return $query->where('is_featured', true);
+    }
+
+    /**
+     * Scope to get models by provider type.
+     */
+    public function scopeByProvider($query, string $providerType)
+    {
+        return $query->where('provider_type', $providerType);
+    }
+
+    /**
+     * Get the full model identifier including provider.
+     */
+    public function getFullModelIdAttribute(): string
+    {
+        return $this->provider_type . '/' . $this->model_id;
+    }
+
+    /**
+     * Update performance metrics.
+     */
+    public function updatePerformanceMetrics(array $metrics): void
+    {
+        $currentMetrics = $this->performance_metrics ?? [];
+        $this->update([
+            'performance_metrics' => array_merge($currentMetrics, $metrics)
+        ]);
+    }
 }

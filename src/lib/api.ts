@@ -64,7 +64,8 @@ export const aiProviderApi = {
   generateResponse: (data: GenerateResponseData) =>
     api.post("/ai-providers/generate-response", data),
   getAvailableProviders: () => api.get("/ai-providers/available"),
-  getProviderConfig: (providerType: string) => api.get(`/ai-providers/config/${providerType}`),
+  getProviderConfig: (providerType: string) =>
+    api.get(`/ai-providers/config/${providerType}`),
 };
 
 interface WidgetData {
