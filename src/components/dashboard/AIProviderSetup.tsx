@@ -23,7 +23,21 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle, AlertCircle, Settings, Key, Zap, Plus, Trash2, Edit, Eye, EyeOff, RefreshCw, Sparkles, Loader2 } from "lucide-react";
+import {
+  CheckCircle,
+  AlertCircle,
+  Settings,
+  Key,
+  Zap,
+  Plus,
+  Trash2,
+  Edit,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  Sparkles,
+  Loader2,
+} from "lucide-react";
 
 interface AIProviderSetupProps {
   onSave?: (config: AIProviderConfig) => void;
@@ -43,7 +57,7 @@ interface AIProviderConfig {
 }
 
 const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
-  onSave = () => { },
+  onSave = () => {},
 }) => {
   const [activeTab, setActiveTab] = useState<string>("providers");
   const [providers, setProviders] = useState<any[]>([]);
@@ -53,7 +67,9 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
   const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [availableModels, setAvailableModels] = useState<Record<string, string[]>>({});
+  const [availableModels, setAvailableModels] = useState<
+    Record<string, string[]>
+  >({});
 
   // Form state for provider configuration
   const [formData, setFormData] = useState({
@@ -102,27 +118,37 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
       const response = await aiProviderApi.getAvailableProviders();
 
       if (response.data?.success && response.data?.providers) {
-        const providerConfigs = Object.entries(response.data.providers).map(([id, config]: [string, any]) => ({
-          id,
-          name: config.name,
-          logo: config.logo,
-          description: config.description,
-          default_model: config.default_model,
-          available_models: config.available_models,
-          default_settings: config.default_settings,
-          api_docs: config.api_docs,
-          pricing_url: config.pricing_url,
-        }));
+        const providerConfigs = Object.entries(response.data.providers).map(
+          ([id, config]: [string, any]) => ({
+            id,
+            name: config.name,
+            logo: config.logo,
+            description: config.description,
+            default_model: config.models?.[0] || "default-model",
+            available_models: config.models || [],
+            default_settings: {
+              temperature: 0.7,
+              max_tokens: 2048,
+              system_prompt: "You are a helpful assistant.",
+              stream_response: true,
+              context_window: 4096,
+              top_p: 0.95,
+            },
+            supported_features: config.supported_features || [],
+          }),
+        );
         setAvailableProviders(providerConfigs);
       }
     } catch (error) {
       console.error("Failed to fetch available providers:", error);
-      // Fallback to static data
-  
+      setAvailableProviders([]);
     }
   };
 
-  const fetchModelsForProvider = async (providerType: string, apiKey: string) => {
+  const fetchModelsForProvider = async (
+    providerType: string,
+    apiKey: string,
+  ) => {
     if (!apiKey) return;
 
     try {
@@ -136,25 +162,27 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
 
       if (response.data?.success && response.data?.models) {
         const models = response.data.models.map((model: any) =>
-          typeof model === 'string' ? model : model.id || model.name
+          typeof model === "string" ? model : model.id || model.name,
         );
 
-        setAvailableModels(prev => ({
+        setAvailableModels((prev) => ({
           ...prev,
-          [providerType]: models
+          [providerType]: models,
         }));
 
         // Update form data with first available model if current model is not in the list
         if (models.length > 0 && !models.includes(formData.model)) {
-          setFormData(prev => ({ ...prev, model: models[0] }));
+          setFormData((prev) => ({ ...prev, model: models[0] }));
         }
       } else {
         // Fallback to default models from provider config
-        const providerConfig = availableProviders.find(p => p.id === providerType);
+        const providerConfig = availableProviders.find(
+          (p) => p.id === providerType,
+        );
         if (providerConfig?.available_models) {
-          setAvailableModels(prev => ({
+          setAvailableModels((prev) => ({
             ...prev,
-            [providerType]: providerConfig.available_models
+            [providerType]: providerConfig.available_models,
           }));
         }
       }
@@ -162,11 +190,13 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
       console.error("Failed to fetch models for provider:", error);
 
       // Fallback to default models from provider config
-      const providerConfig = availableProviders.find(p => p.id === providerType);
+      const providerConfig = availableProviders.find(
+        (p) => p.id === providerType,
+      );
       if (providerConfig?.available_models) {
-        setAvailableModels(prev => ({
+        setAvailableModels((prev) => ({
           ...prev,
-          [providerType]: providerConfig.available_models
+          [providerType]: providerConfig.available_models,
         }));
       }
     } finally {
@@ -181,13 +211,17 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     }
 
     // Then check if we have a configured provider with models in advanced_settings
-    const configuredProvider = providers.find(p => p.provider_type === providerType);
+    const configuredProvider = providers.find(
+      (p) => p.provider_type === providerType,
+    );
     if (configuredProvider?.advanced_settings?.available_models) {
       return configuredProvider.advanced_settings.available_models;
     }
 
     // Finally, fallback to default models from available providers
-    const providerConfig = availableProviders.find(p => p.id === providerType);
+    const providerConfig = availableProviders.find(
+      (p) => p.id === providerType,
+    );
     return providerConfig?.available_models || [];
   };
 
@@ -216,15 +250,20 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
 
   const handleNewProvider = () => {
     setSelectedProvider(null);
-    const defaultProvider = availableProviders.find(p => p.id === "openai") || availableProviders[0];
+    const defaultProvider =
+      availableProviders.find((p) => p.id === "openai") ||
+      availableProviders[0];
     setFormData({
       provider_type: defaultProvider?.id || "openai",
       api_key: "",
       model: defaultProvider?.default_model || "gpt-4o",
       temperature: defaultProvider?.default_settings?.temperature || 0.7,
       max_tokens: defaultProvider?.default_settings?.max_tokens || 2048,
-      system_prompt: defaultProvider?.default_settings?.system_prompt || "You are a helpful assistant.",
-      stream_response: defaultProvider?.default_settings?.stream_response ?? true,
+      system_prompt:
+        defaultProvider?.default_settings?.system_prompt ||
+        "You are a helpful assistant.",
+      stream_response:
+        defaultProvider?.default_settings?.stream_response ?? true,
       context_window: defaultProvider?.default_settings?.context_window || 4096,
       top_p: defaultProvider?.default_settings?.top_p || 0.95,
       is_active: true,
@@ -235,38 +274,32 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
 
   const handleProviderTypeChange = async (providerType: string) => {
     try {
-      const { aiProviderApi } = await import("@/lib/api");
-      const response = await aiProviderApi.getProviderConfig?.(providerType);
-
-      if (response?.data?.success && response.data?.config) {
-        const config = response.data.config;
-        setFormData(prev => ({
+      // Use available provider data directly from the API
+      const providerConfig = availableProviders.find(
+        (p) => p.id === providerType,
+      );
+      if (providerConfig) {
+        setFormData((prev) => ({
           ...prev,
           provider_type: providerType,
-          model: config.default_model,
-          temperature: config.default_settings.temperature,
-          max_tokens: config.default_settings.max_tokens,
-          system_prompt: config.default_settings.system_prompt,
-          stream_response: config.default_settings.stream_response,
-          context_window: config.default_settings.context_window,
-          top_p: config.default_settings.top_p,
+          model: providerConfig.default_model,
+          temperature: providerConfig.default_settings?.temperature || 0.7,
+          max_tokens: providerConfig.default_settings?.max_tokens || 2048,
+          system_prompt:
+            providerConfig.default_settings?.system_prompt ||
+            "You are a helpful assistant.",
+          stream_response:
+            providerConfig.default_settings?.stream_response ?? true,
+          context_window:
+            providerConfig.default_settings?.context_window || 4096,
+          top_p: providerConfig.default_settings?.top_p || 0.95,
         }));
-      } else {
-        // Fallback to available provider data
-        const providerConfig = availableProviders.find(p => p.id === providerType);
-        if (providerConfig) {
-          setFormData(prev => ({
-            ...prev,
-            provider_type: providerType,
-            model: providerConfig.default_model,
-            temperature: providerConfig.default_settings?.temperature || 0.7,
-            max_tokens: providerConfig.default_settings?.max_tokens || 2048,
-            system_prompt: providerConfig.default_settings?.system_prompt || "You are a helpful assistant.",
-            stream_response: providerConfig.default_settings?.stream_response ?? true,
-            context_window: providerConfig.default_settings?.context_window || 4096,
-            top_p: providerConfig.default_settings?.top_p || 0.95,
-          }));
-        }
+
+        // Set available models from provider config
+        setAvailableModels((prev) => ({
+          ...prev,
+          [providerType]: providerConfig.available_models,
+        }));
       }
 
       // If we have an API key, fetch models for the new provider
@@ -274,14 +307,14 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
         fetchModelsForProvider(providerType, formData.api_key);
       }
     } catch (error) {
-      console.error("Failed to fetch provider config:", error);
+      console.error("Failed to update provider config:", error);
     }
   };
 
   const toggleApiKeyVisibility = (providerId: string) => {
-    setShowApiKey(prev => ({
+    setShowApiKey((prev) => ({
       ...prev,
-      [providerId]: !prev[providerId]
+      [providerId]: !prev[providerId],
     }));
   };
 
@@ -393,7 +426,9 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     <div className="space-y-6 bg-background">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">AI Provider Setup</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            AI Provider Setup
+          </h1>
           <p className="text-muted-foreground">
             Connect and configure your AI providers for chat widgets
           </p>
@@ -404,7 +439,11 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
         </Button>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="space-y-6"
+      >
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="providers" className="gap-2">
             <Sparkles className="h-4 w-4" />
@@ -433,7 +472,9 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
               {providers.length === 0 ? (
                 <div className="text-center py-12">
                   <Sparkles className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No providers configured</h3>
+                  <h3 className="text-lg font-semibold mb-2">
+                    No providers configured
+                  </h3>
                   <p className="text-muted-foreground mb-4">
                     Add your first AI provider to get started with chat widgets
                   </p>
@@ -452,31 +493,52 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                       <div className="flex items-center gap-4">
                         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                           <span className="text-lg">
-                            {availableProviders.find(p => p.id === provider.provider_type)?.logo || "🤖"}
+                            {availableProviders.find(
+                              (p) => p.id === provider.provider_type,
+                            )?.logo || "🤖"}
                           </span>
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-semibold capitalize">{provider.provider_type}</h3>
-                            <Badge variant={provider.is_active ? "default" : "secondary"}>
+                            <h3 className="font-semibold capitalize">
+                              {provider.provider_type}
+                            </h3>
+                            <Badge
+                              variant={
+                                provider.is_active ? "default" : "secondary"
+                              }
+                            >
                               {provider.is_active ? "Active" : "Inactive"}
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            Model: {provider.model} • Last used: {new Date(provider.last_used).toLocaleDateString()}
+                            Model: {provider.model} •{" "}
+                            {provider.last_used
+                              ? `Last used: ${new Date(provider.last_used).toLocaleDateString()}`
+                              : "Never used"}
                           </p>
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-muted-foreground">API Key:</span>
+                            <span className="text-xs text-muted-foreground">
+                              API Key:
+                            </span>
                             <code className="text-xs bg-muted px-1 rounded">
-                              {showApiKey[provider.id] ? provider.api_key : provider.api_key.replace(/./g, '*')}
+                              {showApiKey[provider.id]
+                                ? provider.api_key
+                                : provider.api_key.replace(/./g, "*")}
                             </code>
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-6 w-6"
-                              onClick={() => toggleApiKeyVisibility(provider.id)}
+                              onClick={() =>
+                                toggleApiKeyVisibility(provider.id)
+                              }
                             >
-                              {showApiKey[provider.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                              {showApiKey[provider.id] ? (
+                                <EyeOff className="h-3 w-3" />
+                              ) : (
+                                <Eye className="h-3 w-3" />
+                              )}
                             </Button>
                           </div>
                         </div>
@@ -515,19 +577,40 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
             <CardHeader>
               <CardTitle>Available AI Providers</CardTitle>
               <CardDescription>
-                Choose from our supported AI providers to add to your configuration
+                Choose from our supported AI providers to add to your
+                configuration
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {availableProviders.map((provider) => (
-                  <Card key={provider.id} className="cursor-pointer hover:shadow-md transition-shadow">
+                  <Card
+                    key={provider.id}
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                  >
                     <CardContent className="p-6">
                       <div className="flex items-center gap-3 mb-3">
                         <span className="text-2xl">{provider.logo}</span>
                         <div>
                           <h3 className="font-semibold">{provider.name}</h3>
-                          <p className="text-xs text-muted-foreground">{provider.description}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {provider.description}
+                          </p>
+                          {provider.supported_features && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {provider.supported_features
+                                .slice(0, 2)
+                                .map((feature: string) => (
+                                  <Badge
+                                    key={feature}
+                                    variant="outline"
+                                    className="text-xs px-1 py-0"
+                                  >
+                                    {feature.replace("_", " ")}
+                                  </Badge>
+                                ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <Button
@@ -535,7 +618,10 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                         size="sm"
                         className="w-full gap-2"
                         onClick={() => {
-                          setFormData(prev => ({ ...prev, provider_type: provider.id }));
+                          setFormData((prev) => ({
+                            ...prev,
+                            provider_type: provider.id,
+                          }));
                           handleNewProvider();
                         }}
                       >
@@ -556,7 +642,12 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
             <CardHeader>
               <CardTitle>Provider Configuration</CardTitle>
               <CardDescription>
-                Set up your {availableProviders.find((p) => p.id === formData.provider_type)?.name}{" "}
+                Set up your{" "}
+                {
+                  availableProviders.find(
+                    (p) => p.id === formData.provider_type,
+                  )?.name
+                }{" "}
                 integration
               </CardDescription>
             </CardHeader>
@@ -599,13 +690,20 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                           type="password"
                           placeholder={`Enter your ${formData.provider_type} API key`}
                           value={formData.api_key}
-                          onChange={(e) => setFormData(prev => ({ ...prev, api_key: e.target.value }))}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              api_key: e.target.value,
+                            }))
+                          }
                         />
                         <Button
                           variant="outline"
                           size="icon"
                           onClick={handleTestConnection}
-                          disabled={!formData.api_key || testStatus === "loading"}
+                          disabled={
+                            !formData.api_key || testStatus === "loading"
+                          }
                         >
                           {testStatus === "loading" ? (
                             <RefreshCw className="h-4 w-4 animate-spin" />
@@ -640,27 +738,48 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                       </Label>
                       <Select
                         value={formData.model}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, model: value }))}
+                        onValueChange={(value) =>
+                          setFormData((prev) => ({ ...prev, model: value }))
+                        }
                         disabled={modelsLoading}
                       >
                         <SelectTrigger id="model">
                           <SelectValue placeholder="Select model" />
                         </SelectTrigger>
                         <SelectContent>
-                          {getAvailableModels(formData.provider_type)?.map(
-                            (modelOption) => (
-                              <SelectItem key={modelOption} value={modelOption}>
-                                {modelOption}
-                              </SelectItem>
-                            ),
+                          {getAvailableModels(formData.provider_type)?.length >
+                          0 ? (
+                            getAvailableModels(formData.provider_type).map(
+                              (modelOption) => (
+                                <SelectItem
+                                  key={modelOption}
+                                  value={modelOption}
+                                >
+                                  {modelOption}
+                                </SelectItem>
+                              ),
+                            )
+                          ) : (
+                            <SelectItem value="loading" disabled>
+                              {modelsLoading
+                                ? "Loading models..."
+                                : "No models available"}
+                            </SelectItem>
                           )}
                         </SelectContent>
                       </Select>
-                      {formData.api_key && !modelsLoading && getAvailableModels(formData.provider_type).length === 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          No models available. Try testing the connection first.
-                        </p>
-                      )}
+                      {formData.api_key &&
+                        !modelsLoading &&
+                        getAvailableModels(formData.provider_type).length ===
+                          0 && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <AlertCircle className="h-4 w-4 text-amber-500" />
+                            <p className="text-xs text-muted-foreground">
+                              No models available. Try testing the connection to
+                              fetch available models.
+                            </p>
+                          </div>
+                        )}
                     </div>
 
                     <div className="space-y-2">
@@ -675,12 +794,15 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                         step="0.1"
                         value={formData.temperature}
                         onChange={(e) =>
-                          setFormData(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))
+                          setFormData((prev) => ({
+                            ...prev,
+                            temperature: parseFloat(e.target.value),
+                          }))
                         }
                       />
                       <p className="text-xs text-muted-foreground">
-                        Controls randomness: Lower values are more deterministic,
-                        higher values more creative
+                        Controls randomness: Lower values are more
+                        deterministic, higher values more creative
                       </p>
                     </div>
 
@@ -690,7 +812,12 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                         id="max-tokens"
                         type="number"
                         value={formData.max_tokens}
-                        onChange={(e) => setFormData(prev => ({ ...prev, max_tokens: parseInt(e.target.value) }))}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            max_tokens: parseInt(e.target.value),
+                          }))
+                        }
                       />
                       <p className="text-xs text-muted-foreground">
                         Maximum number of tokens to generate in the response
@@ -704,7 +831,12 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                         className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         placeholder="Instructions for the AI assistant"
                         value={formData.system_prompt}
-                        onChange={(e) => setFormData(prev => ({ ...prev, system_prompt: e.target.value }))}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            system_prompt: e.target.value,
+                          }))
+                        }
                       />
                       <p className="text-xs text-muted-foreground">
                         Instructions that define how the AI assistant should
@@ -726,7 +858,12 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                       <Switch
                         id="stream-response"
                         checked={formData.stream_response}
-                        onCheckedChange={(checked) => setFormData(prev => ({ ...prev, stream_response: checked }))}
+                        onCheckedChange={(checked) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            stream_response: checked,
+                          }))
+                        }
                       />
                     </div>
 
@@ -739,7 +876,10 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                         type="number"
                         value={formData.context_window}
                         onChange={(e) =>
-                          setFormData(prev => ({ ...prev, context_window: parseInt(e.target.value) }))
+                          setFormData((prev) => ({
+                            ...prev,
+                            context_window: parseInt(e.target.value),
+                          }))
                         }
                       />
                       <p className="text-xs text-muted-foreground">
@@ -756,7 +896,12 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                         max="1"
                         step="0.05"
                         value={formData.top_p}
-                        onChange={(e) => setFormData(prev => ({ ...prev, top_p: parseFloat(e.target.value) }))}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            top_p: parseFloat(e.target.value),
+                          }))
+                        }
                       />
                       <p className="text-xs text-muted-foreground">
                         Controls diversity via nucleus sampling
@@ -768,7 +913,13 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                         variant="outline"
                         className="w-full"
                         size="sm"
-                        onClick={() => formData.api_key && fetchModelsForProvider(formData.provider_type, formData.api_key)}
+                        onClick={() =>
+                          formData.api_key &&
+                          fetchModelsForProvider(
+                            formData.provider_type,
+                            formData.api_key,
+                          )
+                        }
                         disabled={!formData.api_key || modelsLoading}
                       >
                         {modelsLoading ? (
@@ -784,12 +935,45 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
               </Tabs>
             </CardContent>
             <CardFooter className="flex justify-between">
-              <Button variant="outline">Reset to Defaults</Button>
-              <Button onClick={handleSaveConfiguration} disabled={loading}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const providerConfig = availableProviders.find(
+                    (p) => p.id === formData.provider_type,
+                  );
+                  if (providerConfig) {
+                    setFormData((prev) => ({
+                      ...prev,
+                      model: providerConfig.default_model,
+                      temperature:
+                        providerConfig.default_settings?.temperature || 0.7,
+                      max_tokens:
+                        providerConfig.default_settings?.max_tokens || 2048,
+                      system_prompt:
+                        providerConfig.default_settings?.system_prompt ||
+                        "You are a helpful assistant.",
+                      stream_response:
+                        providerConfig.default_settings?.stream_response ??
+                        true,
+                      context_window:
+                        providerConfig.default_settings?.context_window || 4096,
+                      top_p: providerConfig.default_settings?.top_p || 0.95,
+                    }));
+                  }
+                }}
+              >
+                Reset to Defaults
+              </Button>
+              <Button
+                onClick={handleSaveConfiguration}
+                disabled={
+                  loading || !formData.api_key || !formData.provider_type
+                }
+              >
                 {loading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : null}
-                Save Configuration
+                {isEditing ? "Update Configuration" : "Save Configuration"}
               </Button>
             </CardFooter>
           </Card>
