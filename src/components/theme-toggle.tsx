@@ -29,8 +29,6 @@ export function ThemeToggle() {
 
   const handleThemeChange = (newTheme: string) => {
     setTheme(newTheme);
-    // Save theme preference to localStorage for persistence
-    localStorage.setItem("theme", newTheme);
   };
 
   return (
