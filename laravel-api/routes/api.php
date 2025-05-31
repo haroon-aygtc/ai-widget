@@ -42,28 +42,35 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('api-discovery', [ApiTestingController::class, 'discoverEndpoints']);
     Route::post('api-execute', [ApiTestingController::class, 'executeRequest']);
 
-    // AI Provider routes
-    Route::apiResource('ai-providers', AIProviderController::class);
-    Route::post('ai-providers/test-connection', [AIProviderController::class, 'testConnection']);
-    Route::post('ai-providers/generate-response', [AIProviderController::class, 'generateResponse']);
-    Route::get('ai-providers/available', [AIProviderController::class, 'getAvailableProviders']);
-    Route::get('ai-providers/config/{providerType}', [AIProviderController::class, 'getProviderConfig']);
+    // AI Provider Management routes
+    Route::prefix('ai-providers')->group(function () {
+        Route::get('/', [AIProviderController::class, 'index']);
+        Route::post('/', [AIProviderController::class, 'store']);
+        Route::post('/test-connection', [AIProviderController::class, 'testConnection']);
+        Route::get('/{providerType}/models', [AIProviderController::class, 'getModels']);
+        Route::patch('/{provider}/toggle-status', [AIProviderController::class, 'toggleStatus']);
+        Route::delete('/{provider}', [AIProviderController::class, 'destroy']);
+    });
 
-    // AI Model routes
+    // AI Model Management routes
     Route::apiResource('ai-models', AIModelController::class);
     Route::post('ai-models/fetch-available', [AIModelController::class, 'fetchAvailableModels']);
     Route::post('ai-models/test-model', [AIModelController::class, 'testModel']);
     Route::patch('ai-models/{id}/toggle-active', [AIModelController::class, 'toggleActive']);
     Route::patch('ai-models/{id}/toggle-featured', [AIModelController::class, 'toggleFeatured']);
 
+    // Chat routes
+    Route::prefix('chat')->group(function () {
+        Route::post('/message', [ChatController::class, 'sendMessage']);
+        Route::post('/stream', [ChatController::class, 'streamMessage']);
+        Route::get('/providers', [ChatController::class, 'getAvailableProviders']);
+        Route::post('/test-provider', [ChatController::class, 'testProvider']);
+        Route::get('/stats', [ChatController::class, 'getProviderStats']);
+    });
+
     // Widget routes
     Route::apiResource('widgets', WidgetController::class);
     Route::post('widgets/{widget}/generate-embed-code', [WidgetController::class, 'generateEmbedCode']);
-
-    // Chat routes
-    Route::get('chats', [ChatController::class, 'index']);
-    Route::get('chats/{sessionId}', [ChatController::class, 'getBySession']);
-    Route::post('chats/send-message', [ChatController::class, 'sendMessage']);
 
     // Analytics routes
     Route::get('analytics/widgets/{widgetId?}', [WidgetController::class, 'getAnalytics']);

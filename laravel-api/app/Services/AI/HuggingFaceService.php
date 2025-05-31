@@ -2,38 +2,45 @@
 
 namespace App\Services\AI;
 
+use App\Models\AIProvider;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Client\RequestException;
 
 class HuggingFaceService
 {
     protected string $apiUrl = 'https://api-inference.huggingface.co/models';
-    
+    protected AIProvider $provider;
+
+    public function __construct(AIProvider $provider)
+    {
+        $this->provider = $provider;
+    }
+
     /**
      * Generate a response using HuggingFace
      *
      * @param string $message
-     * @param array $config
+     * @param array $context
      * @return array
      * @throws \Exception
      */
-    public function generateResponse(string $message, array $config = [])
+    public function generateResponse(string $message, array $context = [])
     {
-        // Extract configuration parameters
-        $apiKey = $config['apiKey'] ?? env('HUGGINGFACE_API_KEY');
-        $model = $config['model'] ?? 'meta-llama/Llama-2-70b-chat-hf';
-        $temperature = $config['temperature'] ?? 0.7;
-        $maxTokens = $config['maxTokens'] ?? 2048;
-        $systemPrompt = $config['systemPrompt'] ?? 'You are a helpful assistant.';
-        
+        // Use provider configuration
+        $apiKey = $this->provider->api_key;
+        $model = $this->provider->model;
+        $temperature = $this->provider->temperature;
+        $maxTokens = $this->provider->max_tokens;
+        $systemPrompt = $this->provider->system_prompt;
+
         if (!$apiKey) {
             throw new \Exception('HuggingFace API key is required');
         }
-        
+
         try {
-            // Format the prompt based on the model
-            $prompt = $this->formatPrompt($message, $systemPrompt, $model);
-            
+            // Format the prompt based on the model and context
+            $prompt = $this->formatPrompt($message, $systemPrompt, $model, $context);
+
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $apiKey,
                 'Content-Type' => 'application/json',
@@ -48,10 +55,10 @@ class HuggingFaceService
                     'return_full_text' => false
                 ]
             ]);
-            
+
             if ($response->successful()) {
                 $data = $response->json();
-                
+
                 // HuggingFace can return different response formats based on the model
                 $responseText = '';
                 if (isset($data[0]['generated_text'])) {
@@ -59,57 +66,110 @@ class HuggingFaceService
                 } elseif (is_string($data)) {
                     $responseText = $data;
                 }
-                
+
                 return [
                     'success' => true,
-                    'response' => $responseText,
+                    'content' => $responseText,
                     'model' => $model,
                     'usage' => [
                         'prompt_tokens' => strlen($prompt) / 4, // Rough estimation
                         'completion_tokens' => strlen($responseText) / 4, // Rough estimation
                         'total_tokens' => (strlen($prompt) / 4) + (strlen($responseText) / 4),
                     ],
-                    'provider' => 'huggingface'
+                    'provider' => 'huggingface',
+                    'provider_id' => $this->provider->id
                 ];
             } else {
                 return [
                     'success' => false,
                     'error' => $response->json()['error'] ?? 'Unknown error',
                     'status' => $response->status(),
-                    'provider' => 'huggingface'
+                    'provider' => 'huggingface',
+                    'provider_id' => $this->provider->id
                 ];
             }
         } catch (RequestException $e) {
             throw new \Exception('HuggingFace API error: ' . $e->getMessage());
         }
     }
-    
+
     /**
-     * Format the prompt based on the model
+     * Format the prompt based on the model and context
      *
      * @param string $message
      * @param string $systemPrompt
      * @param string $model
+     * @param array $context
      * @return string
      */
-    protected function formatPrompt(string $message, string $systemPrompt, string $model): string
+    protected function formatPrompt(string $message, string $systemPrompt, string $model, array $context): string
     {
+        $prompt = '';
+
         // Different models require different prompt formats
         if (strpos($model, 'llama') !== false) {
             // Llama format
-            return "<s>[INST] <<SYS>>\n{$systemPrompt}\n<</SYS>>\n\n{$message} [/INST]";
+            $prompt = "<s>[INST] <<SYS>>\n{$systemPrompt}\n<</SYS>>\n\n";
+
+            // Add conversation history
+            if (!empty($context['conversation_history'])) {
+                foreach ($context['conversation_history'] as $msg) {
+                    if ($msg['role'] === 'user') {
+                        $prompt .= $msg['content'] . " [/INST] ";
+                    } else {
+                        $prompt .= $msg['content'] . " </s><s>[INST] ";
+                    }
+                }
+            }
+
+            $prompt .= "{$message} [/INST]";
         } elseif (strpos($model, 'mistral') !== false) {
             // Mistral format
-            return "<s>[INST] {$systemPrompt}\n\n{$message} [/INST]";
+            $prompt = "<s>[INST] {$systemPrompt}\n\n";
+
+            // Add conversation history
+            if (!empty($context['conversation_history'])) {
+                foreach ($context['conversation_history'] as $msg) {
+                    if ($msg['role'] === 'user') {
+                        $prompt .= $msg['content'] . " [/INST] ";
+                    } else {
+                        $prompt .= $msg['content'] . " </s><s>[INST] ";
+                    }
+                }
+            }
+
+            $prompt .= "{$message} [/INST]";
         } elseif (strpos($model, 'falcon') !== false) {
             // Falcon format
-            return "System: {$systemPrompt}\nUser: {$message}\nAssistant:";
+            $prompt = "System: {$systemPrompt}\n";
+
+            // Add conversation history
+            if (!empty($context['conversation_history'])) {
+                foreach ($context['conversation_history'] as $msg) {
+                    $role = $msg['role'] === 'user' ? 'User' : 'Assistant';
+                    $prompt .= "{$role}: {$msg['content']}\n";
+                }
+            }
+
+            $prompt .= "User: {$message}\nAssistant:";
         } else {
             // Default format
-            return "{$systemPrompt}\n\nUser: {$message}\nAssistant:";
+            $prompt = "{$systemPrompt}\n\n";
+
+            // Add conversation history
+            if (!empty($context['conversation_history'])) {
+                foreach ($context['conversation_history'] as $msg) {
+                    $role = $msg['role'] === 'user' ? 'User' : 'Assistant';
+                    $prompt .= "{$role}: {$msg['content']}\n";
+                }
+            }
+
+            $prompt .= "User: {$message}\nAssistant:";
         }
+
+        return $prompt;
     }
-    
+
     /**
      * Test connection to HuggingFace
      *
@@ -119,40 +179,14 @@ class HuggingFaceService
     public function testConnection(array $config): array
     {
         try {
-            $apiKey = $config['apiKey'] ?? null;
-            
-            if (!$apiKey) {
-                return [
-                    'success' => false,
-                    'message' => 'API key is required',
-                    'provider' => 'huggingface'
-                ];
-            }
-            
-            // HuggingFace doesn't have a specific endpoint to list models or test connection
-            // So we'll use a simple model info request
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $apiKey,
-            ])
-            ->timeout(10)
-            ->get('https://huggingface.co/api/models?filter=text-generation&sort=downloads&direction=-1&limit=10');
-            
-            if ($response->successful()) {
-                return [
-                    'success' => true,
-                    'message' => 'Connection successful',
-                    'provider' => 'huggingface',
-                    'models' => array_map(function($model) {
-                        return $model['id'];
-                    }, $response->json() ?? [])
-                ];
-            } else {
-                return [
-                    'success' => false,
-                    'message' => $response->json()['error'] ?? 'Connection failed',
-                    'provider' => 'huggingface'
-                ];
-            }
+            $result = $this->generateResponse('Hello, this is a test message.', []);
+
+            return [
+                'success' => $result['success'],
+                'message' => $result['success'] ? 'Connection successful' : ($result['error'] ?? 'Connection failed'),
+                'provider' => 'huggingface',
+                'model' => $this->provider->model
+            ];
         } catch (\Exception $e) {
             return [
                 'success' => false,

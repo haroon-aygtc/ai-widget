@@ -14,7 +14,7 @@ class AIProvider extends Model
      *
      * @var string
      */
-    protected $table = 'a_i_providers';
+    protected $table = 'ai_providers';
 
     /**
      * The attributes that are mass assignable.
@@ -24,6 +24,7 @@ class AIProvider extends Model
     protected $fillable = [
         'user_id',
         'provider_type',
+        'name',
         'api_key',
         'model',
         'temperature',

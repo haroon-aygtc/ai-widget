@@ -2,6 +2,7 @@
 
 namespace App\Services\AI;
 
+use App\Models\AIProvider;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -10,30 +11,37 @@ use Illuminate\Http\StreamedResponse;
 class GeminiService
 {
     protected string $baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-    protected array $defaultConfig = [
-        'model' => 'gemini-1.5-flash',
-        'temperature' => 0.7,
-        'maxTokens' => 2048,
-        'topP' => 0.9,
-        'topK' => 40,
-    ];
+    protected AIProvider $provider;
+
+    public function __construct(AIProvider $provider)
+    {
+        $this->provider = $provider;
+    }
 
     /**
      * Generate response from Gemini API.
      *
      * @param string $message
-     * @param array $config
+     * @param array $context
      * @return array
      * @throws \Exception
      */
-    public function generateResponse(string $message, array $config = []): array
+    public function generateResponse(string $message, array $context = []): array
     {
         $startTime = microtime(true);
 
         try {
-            $config = array_merge($this->defaultConfig, $config);
+            // Use provider configuration
+            $apiKey = $this->provider->api_key;
+            $model = $this->provider->model;
+            $temperature = $this->provider->temperature;
+            $maxTokens = $this->provider->max_tokens;
+            $systemPrompt = $this->provider->system_prompt;
+            $advancedSettings = $this->provider->advanced_settings ?? [];
+            $topP = $advancedSettings['top_p'] ?? 0.9;
+            $topK = $advancedSettings['top_k'] ?? 40;
 
-            if (empty($config['apiKey'])) {
+            if (!$apiKey) {
                 throw new \Exception('Gemini API key is required');
             }
 
@@ -41,15 +49,15 @@ class GeminiService
                 'contents' => [
                     [
                         'parts' => [
-                            ['text' => $this->buildPrompt($message, $config)]
+                            ['text' => $this->buildPrompt($message, $systemPrompt, $context)]
                         ]
                     ]
                 ],
                 'generationConfig' => [
-                    'temperature' => $config['temperature'],
-                    'maxOutputTokens' => $config['maxTokens'],
-                    'topP' => $config['topP'],
-                    'topK' => $config['topK'],
+                    'temperature' => $temperature,
+                    'maxOutputTokens' => $maxTokens,
+                    'topP' => $topP,
+                    'topK' => $topK,
                 ]
             ];
 
@@ -58,7 +66,7 @@ class GeminiService
                     'Content-Type' => 'application/json',
                 ])
                 ->post(
-                    $this->baseUrl . '/models/' . $config['model'] . ':generateContent?key=' . $config['apiKey'],
+                    $this->baseUrl . '/models/' . $model . ':generateContent?key=' . $apiKey,
                     $payload
                 );
 
@@ -77,26 +85,30 @@ class GeminiService
 
             return [
                 'success' => true,
-                'response' => $responseText,
-                'model' => $config['model'],
+                'content' => $responseText,
+                'model' => $model,
                 'response_time' => $responseTime,
-                'token_usage' => [
+                'usage' => [
                     'prompt_tokens' => $data['usageMetadata']['promptTokenCount'] ?? null,
                     'completion_tokens' => $data['usageMetadata']['candidatesTokenCount'] ?? null,
                     'total_tokens' => $data['usageMetadata']['totalTokenCount'] ?? null,
                 ],
-                'finish_reason' => $data['candidates'][0]['finishReason'] ?? 'stop'
+                'finish_reason' => $data['candidates'][0]['finishReason'] ?? 'stop',
+                'provider' => 'gemini',
+                'provider_id' => $this->provider->id
             ];
         } catch (\Exception $e) {
             Log::error('Gemini API Error', [
                 'message' => $e->getMessage(),
-                'config' => array_filter($config, fn($key) => $key !== 'apiKey', ARRAY_FILTER_USE_KEY)
+                'provider_id' => $this->provider->id
             ]);
 
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
-                'response_time' => microtime(true) - $startTime
+                'response_time' => microtime(true) - $startTime,
+                'provider' => 'gemini',
+                'provider_id' => $this->provider->id
             ];
         }
     }
@@ -110,13 +122,13 @@ class GeminiService
     public function testConnection(array $config): array
     {
         try {
-            $result = $this->generateResponse('Hello, this is a test message.', $config);
+            $result = $this->generateResponse('Hello, this is a test message.', []);
 
             return [
                 'success' => $result['success'],
                 'message' => $result['success'] ? 'Connection successful' : $result['message'],
                 'provider' => 'gemini',
-                'model' => $config['model'] ?? $this->defaultConfig['model'],
+                'model' => $this->provider->model,
                 'response_time' => $result['response_time'] ?? null
             ];
         } catch (\Exception $e) {
@@ -132,18 +144,18 @@ class GeminiService
      * Stream response from Gemini API.
      *
      * @param string $message
-     * @param array $config
+     * @param array $context
      * @return StreamedResponse
      */
-    public function streamResponse(string $message, array $config = []): StreamedResponse
+    public function streamResponse(string $message, array $context = []): StreamedResponse
     {
-        return response()->stream(function () use ($message, $config) {
+        return response()->stream(function () use ($message, $context) {
             try {
-                $result = $this->generateResponse($message, $config);
+                $result = $this->generateResponse($message, $context);
 
                 if ($result['success']) {
                     // Simulate streaming by chunking the response
-                    $chunks = str_split($result['response'], 10);
+                    $chunks = str_split($result['content'], 10);
                     foreach ($chunks as $chunk) {
                         echo "data: " . json_encode(['chunk' => $chunk]) . "\n\n";
                         ob_flush();
@@ -168,16 +180,27 @@ class GeminiService
     }
 
     /**
-     * Build prompt with system context.
+     * Build prompt with system context and conversation history.
      *
      * @param string $message
-     * @param array $config
+     * @param string $systemPrompt
+     * @param array $context
      * @return string
      */
-    protected function buildPrompt(string $message, array $config): string
+    protected function buildPrompt(string $message, string $systemPrompt, array $context): string
     {
-        $systemPrompt = $config['systemPrompt'] ?? 'You are a helpful assistant.';
-        return $systemPrompt . "\n\nUser: " . $message . "\n\nAssistant:";
+        $prompt = $systemPrompt . "\n\n";
+
+        // Add conversation history if provided
+        if (!empty($context['conversation_history'])) {
+            foreach ($context['conversation_history'] as $msg) {
+                $role = $msg['role'] === 'user' ? 'User' : 'Assistant';
+                $prompt .= $role . ": " . $msg['content'] . "\n";
+            }
+        }
+
+        $prompt .= "User: " . $message . "\n\nAssistant:";
+        return $prompt;
     }
 
     /**

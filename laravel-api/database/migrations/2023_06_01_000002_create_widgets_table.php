@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('widgets', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->foreignId('a_i_provider_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('ai_provider_id')->nullable()->constrained('ai_providers')->nullOnDelete();
             $table->string('name');
             $table->json('design')->nullable();
             $table->json('behavior')->nullable();

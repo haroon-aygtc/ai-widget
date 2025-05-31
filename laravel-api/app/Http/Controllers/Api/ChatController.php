@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Message;
 use App\Models\ChatHistory;
 use App\Models\Widget;
+use App\Models\AIProvider;
 use App\Services\AI\AIServiceFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -39,133 +40,221 @@ class ChatController extends Controller
     }
 
     /**
-     * Send a message and get AI response.
-     *
-     * @param Request $request
-     * @return JsonResponse
+     * Send message to AI provider
      */
     public function sendMessage(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'widget_id' => 'required|string',
-            'session_id' => 'required|string|max:255',
-            'message' => 'required|string|max:2000',
-            'user_data' => 'nullable|array',
-            'user_data.name' => 'nullable|string|max:100',
-            'user_data.email' => 'nullable|email|max:255',
-            'user_data.phone' => 'nullable|string|max:20'
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        // Rate limiting
-        $rateLimitKey = 'chat_message:' . $request->ip() . ':' . $request->session_id;
-        if (RateLimiter::tooManyAttempts($rateLimitKey, 30)) {
-            $seconds = RateLimiter::availableIn($rateLimitKey);
-            return response()->json([
-                'error' => 'Too many messages. Please wait ' . $seconds . ' seconds.'
-            ], 429);
-        }
-
-        RateLimiter::hit($rateLimitKey, 60); // 30 messages per minute
-
         try {
-            // Get widget configuration
-            $widget = Widget::where('embed_code', $request->widget_id)
-                          ->where('status', 'active')
-                          ->with('aiProvider')
-                          ->first();
-
-            if (!$widget) {
-                return response()->json(['error' => 'Widget not found or inactive'], 404);
-            }
-
-            if (!$widget->aiProvider) {
-                return response()->json(['error' => 'No AI provider configured for this widget'], 400);
-            }
-
-            // Sanitize input
-            $sanitizedMessage = $this->sanitizeInput($request->message);
-
-            // Store user message
-            $userMessage = Message::create([
-                'session_id' => $request->session_id,
-                'widget_id' => $widget->id,
-                'sender_type' => 'user',
-                'message' => $sanitizedMessage,
-                'user_data' => $request->user_data,
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent()
+            $validated = $request->validate([
+                'message' => 'required|string',
+                'provider_id' => 'required|exists:ai_providers,id',
+                'conversation_history' => 'nullable|array',
+                'conversation_history.*.role' => 'required_with:conversation_history|in:user,assistant',
+                'conversation_history.*.content' => 'required_with:conversation_history|string'
             ]);
 
-            // Get conversation context
-            $conversationHistory = $this->getConversationContext($request->session_id, $widget->behavior['maxMessages'] ?? 10);
+            $provider = AIProvider::findOrFail($validated['provider_id']);
 
-            // Create AI service instance using factory
-            $aiService = AIServiceFactory::create($widget->aiProvider);
+            if (!$provider->is_active) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Selected AI provider is not active'
+                ], 400);
+            }
 
-            // Prepare context for AI
+            if (!$provider->api_key) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'AI provider is not configured with API key'
+                ], 400);
+            }
+
+            $service = AIServiceFactory::create($provider);
+
             $context = [
-                'conversation_history' => $conversationHistory,
-                'widget_config' => $widget->behavior ?? [],
-                'user_data' => $request->user_data ?? []
+                'conversation_history' => $validated['conversation_history'] ?? []
             ];
 
-            // Generate AI response
             $startTime = microtime(true);
-            $aiResponse = $aiService->generateResponse($sanitizedMessage, $context);
+            $response = $service->generateResponse($validated['message'], $context);
             $responseTime = microtime(true) - $startTime;
 
-            if (!$aiResponse['success']) {
-                throw new \Exception($aiResponse['error'] ?? 'AI service error');
+            // Add response time if not already included
+            if (!isset($response['response_time'])) {
+                $response['response_time'] = $responseTime;
             }
 
-            // Store AI response
-            $aiMessage = Message::create([
-                'session_id' => $request->session_id,
-                'widget_id' => $widget->id,
-                'sender_type' => 'ai',
-                'response' => $aiResponse['content'],
-                'response_time' => $responseTime,
-                'token_usage' => $aiResponse['usage'] ?? null,
-                'ai_model' => $aiResponse['model'] ?? $widget->aiProvider->model,
-                'ai_provider_id' => $widget->aiProvider->id
-            ]);
-
-            // Update or create chat history record
-            $this->updateChatHistory($widget->id, $request->session_id, $request->user_data);
-
-            Log::info('Chat message processed', [
-                'widget_id' => $widget->id,
-                'session_id' => $request->session_id,
-                'response_time' => $responseTime,
-                'provider' => $widget->aiProvider->provider_type,
-                'model' => $aiResponse['model'] ?? $widget->aiProvider->model
-            ]);
-
             return response()->json([
-                'success' => true,
-                'response' => $aiResponse['content'],
-                'message_id' => $aiMessage->id,
-                'response_time' => round($responseTime, 3),
-                'metadata' => [
-                    'model' => $aiResponse['model'] ?? $widget->aiProvider->model,
-                    'provider' => $widget->aiProvider->provider_type,
-                    'token_usage' => $aiResponse['usage'] ?? null
-                ]
+                'success' => $response['success'],
+                'data' => $response
             ]);
-
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
-            Log::error('Chat message error: ' . $e->getMessage(), [
-                'widget_id' => $request->widget_id,
-                'session_id' => $request->session_id
+            Log::error('Chat request failed', [
+                'error' => $e->getMessage(),
+                'provider_id' => $request->input('provider_id'),
+                'message_length' => strlen($request->input('message', ''))
             ]);
 
             return response()->json([
                 'success' => false,
-                'error' => 'Sorry, I encountered an error processing your message. Please try again.'
+                'message' => 'Chat request failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Stream message to AI provider
+     */
+    public function streamMessage(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'message' => 'required|string',
+                'provider_id' => 'required|exists:ai_providers,id',
+                'conversation_history' => 'nullable|array',
+                'conversation_history.*.role' => 'required_with:conversation_history|in:user,assistant',
+                'conversation_history.*.content' => 'required_with:conversation_history|string'
+            ]);
+
+            $provider = AIProvider::findOrFail($validated['provider_id']);
+
+            if (!$provider->is_active || !$provider->api_key) {
+                return response()->json(['error' => 'Provider not available'], 400);
+            }
+
+            $service = AIServiceFactory::create($provider);
+
+            $context = [
+                'conversation_history' => $validated['conversation_history'] ?? []
+            ];
+
+            return $service->streamResponse($validated['message'], $context);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'details' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Stream request failed', [
+                'error' => $e->getMessage(),
+                'provider_id' => $request->input('provider_id')
+            ]);
+
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Get available providers for chat
+     */
+    public function getAvailableProviders(): JsonResponse
+    {
+        try {
+            $providers = AIProvider::where('is_active', true)
+                ->whereNotNull('api_key')
+                ->select(['id', 'name', 'provider_type', 'model'])
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $providers
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch available providers', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch available providers'
+            ], 500);
+        }
+    }
+
+    /**
+     * Test a quick message with a provider
+     */
+    public function testProvider(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'provider_id' => 'required|exists:ai_providers,id',
+                'test_message' => 'nullable|string'
+            ]);
+
+            $provider = AIProvider::findOrFail($validated['provider_id']);
+
+            if (!$provider->is_active || !$provider->api_key) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Provider not available for testing'
+                ], 400);
+            }
+
+            $service = AIServiceFactory::create($provider);
+            $testMessage = $validated['test_message'] ?? 'Hello! Please respond with a brief greeting to confirm you are working correctly.';
+
+            $response = $service->generateResponse($testMessage, []);
+
+            return response()->json([
+                'success' => $response['success'],
+                'data' => [
+                    'provider_name' => $provider->name,
+                    'provider_type' => $provider->provider_type,
+                    'model' => $provider->model,
+                    'test_message' => $testMessage,
+                    'response' => $response
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Provider test failed', [
+                'error' => $e->getMessage(),
+                'provider_id' => $request->input('provider_id')
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Provider test failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get provider statistics
+     */
+    public function getProviderStats(): JsonResponse
+    {
+        try {
+            $stats = AIProvider::selectRaw('
+                provider_type,
+                COUNT(*) as total_configured,
+                SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_count,
+                SUM(CASE WHEN api_key IS NOT NULL THEN 1 ELSE 0 END) as configured_count
+            ')
+            ->groupBy('provider_type')
+            ->get();
+
+            $totalProviders = AIProvider::count();
+            $activeProviders = AIProvider::where('is_active', true)->whereNotNull('api_key')->count();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'total_providers' => $totalProviders,
+                    'active_providers' => $activeProviders,
+                    'provider_breakdown' => $stats
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch provider stats', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch provider statistics'
             ], 500);
         }
     }

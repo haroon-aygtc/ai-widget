@@ -2,6 +2,7 @@
 
 namespace App\Services\AI;
 
+use App\Models\AIProvider;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -10,55 +11,76 @@ use Illuminate\Http\StreamedResponse;
 class ClaudeService
 {
     protected string $baseUrl = 'https://api.anthropic.com/v1';
-    protected array $defaultConfig = [
-        'model' => 'claude-3-haiku-20240307',
-        'temperature' => 0.7,
-        'maxTokens' => 2048,
-        'topP' => 1.0,
-        'topK' => 5,
-    ];
+    protected AIProvider $provider;
+
+    public function __construct(AIProvider $provider)
+    {
+        $this->provider = $provider;
+    }
 
     /**
      * Generate response from Claude API.
      *
      * @param string $message
-     * @param array $config
+     * @param array $context
      * @return array
      * @throws \Exception
      */
-    public function generateResponse(string $message, array $config = []): array
+    public function generateResponse(string $message, array $context = []): array
     {
         $startTime = microtime(true);
 
         try {
-            $config = array_merge($this->defaultConfig, $config);
+            // Use provider configuration
+            $apiKey = $this->provider->api_key;
+            $model = $this->provider->model;
+            $temperature = $this->provider->temperature;
+            $maxTokens = $this->provider->max_tokens;
+            $systemPrompt = $this->provider->system_prompt;
+            $advancedSettings = $this->provider->advanced_settings ?? [];
+            $topP = $advancedSettings['top_p'] ?? 1.0;
+            $topK = $advancedSettings['top_k'] ?? 5;
 
-            if (empty($config['apiKey'])) {
+            if (!$apiKey) {
                 throw new \Exception('Claude API key is required');
             }
 
+            // Build messages array with context
+            $messages = [];
+
+            // Add conversation context if provided
+            if (!empty($context['conversation_history'])) {
+                foreach ($context['conversation_history'] as $msg) {
+                    $messages[] = [
+                        'role' => $msg['role'] ?? 'user',
+                        'content' => $msg['content']
+                    ];
+                }
+            }
+
+            // Add current message
+            $messages[] = [
+                'role' => 'user',
+                'content' => $message
+            ];
+
             $payload = [
-                'model' => $config['model'],
-                'max_tokens' => $config['maxTokens'],
-                'temperature' => $config['temperature'],
-                'top_p' => $config['topP'],
-                'top_k' => $config['topK'],
-                'messages' => [
-                    [
-                        'role' => 'user',
-                        'content' => $message
-                    ]
-                ]
+                'model' => $model,
+                'max_tokens' => $maxTokens,
+                'temperature' => $temperature,
+                'top_p' => $topP,
+                'top_k' => $topK,
+                'messages' => $messages
             ];
 
             // Add system prompt if provided
-            if (!empty($config['systemPrompt'])) {
-                $payload['system'] = $config['systemPrompt'];
+            if (!empty($systemPrompt)) {
+                $payload['system'] = $systemPrompt;
             }
 
             $response = Http::timeout(30)
                 ->withHeaders([
-                    'x-api-key' => $config['apiKey'],
+                    'x-api-key' => $apiKey,
                     'Content-Type' => 'application/json',
                     'anthropic-version' => '2023-06-01',
                 ])
@@ -79,26 +101,30 @@ class ClaudeService
 
             return [
                 'success' => true,
-                'response' => $responseText,
-                'model' => $data['model'] ?? $config['model'],
+                'content' => $responseText,
+                'model' => $data['model'] ?? $model,
                 'response_time' => $responseTime,
-                'token_usage' => [
+                'usage' => [
                     'prompt_tokens' => $data['usage']['input_tokens'] ?? null,
                     'completion_tokens' => $data['usage']['output_tokens'] ?? null,
                     'total_tokens' => ($data['usage']['input_tokens'] ?? 0) + ($data['usage']['output_tokens'] ?? 0),
                 ],
-                'finish_reason' => $data['stop_reason'] ?? 'end_turn'
+                'finish_reason' => $data['stop_reason'] ?? 'end_turn',
+                'provider' => 'claude',
+                'provider_id' => $this->provider->id
             ];
         } catch (\Exception $e) {
             Log::error('Claude API Error', [
                 'message' => $e->getMessage(),
-                'config' => array_filter($config, fn($key) => $key !== 'apiKey', ARRAY_FILTER_USE_KEY)
+                'provider_id' => $this->provider->id
             ]);
 
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
-                'response_time' => microtime(true) - $startTime
+                'response_time' => microtime(true) - $startTime,
+                'provider' => 'claude',
+                'provider_id' => $this->provider->id
             ];
         }
     }
@@ -112,13 +138,13 @@ class ClaudeService
     public function testConnection(array $config): array
     {
         try {
-            $result = $this->generateResponse('Hello, this is a test message.', $config);
+            $result = $this->generateResponse('Hello, this is a test message.', []);
 
             return [
                 'success' => $result['success'],
                 'message' => $result['success'] ? 'Connection successful' : $result['message'],
                 'provider' => 'claude',
-                'model' => $config['model'] ?? $this->defaultConfig['model'],
+                'model' => $this->provider->model,
                 'response_time' => $result['response_time'] ?? null
             ];
         } catch (\Exception $e) {
@@ -134,42 +160,64 @@ class ClaudeService
      * Stream response from Claude API.
      *
      * @param string $message
-     * @param array $config
+     * @param array $context
      * @return StreamedResponse
      */
-    public function streamResponse(string $message, array $config = []): StreamedResponse
+    public function streamResponse(string $message, array $context = []): StreamedResponse
     {
-        return response()->stream(function () use ($message, $config) {
+        return response()->stream(function () use ($message, $context) {
             try {
-                $config = array_merge($this->defaultConfig, $config);
+                // Use provider configuration
+                $apiKey = $this->provider->api_key;
+                $model = $this->provider->model;
+                $temperature = $this->provider->temperature;
+                $maxTokens = $this->provider->max_tokens;
+                $systemPrompt = $this->provider->system_prompt;
+                $advancedSettings = $this->provider->advanced_settings ?? [];
+                $topP = $advancedSettings['top_p'] ?? 1.0;
+                $topK = $advancedSettings['top_k'] ?? 5;
 
-                if (empty($config['apiKey'])) {
+                if (!$apiKey) {
                     throw new \Exception('Claude API key is required');
                 }
 
+                // Build messages array with context
+                $messages = [];
+
+                // Add conversation context if provided
+                if (!empty($context['conversation_history'])) {
+                    foreach ($context['conversation_history'] as $msg) {
+                        $messages[] = [
+                            'role' => $msg['role'] ?? 'user',
+                            'content' => $msg['content']
+                        ];
+                    }
+                }
+
+                // Add current message
+                $messages[] = [
+                    'role' => 'user',
+                    'content' => $message
+                ];
+
                 $payload = [
-                    'model' => $config['model'],
-                    'max_tokens' => $config['maxTokens'],
-                    'temperature' => $config['temperature'],
-                    'top_p' => $config['topP'],
-                    'top_k' => $config['topK'],
+                    'model' => $model,
+                    'max_tokens' => $maxTokens,
+                    'temperature' => $temperature,
+                    'top_p' => $topP,
+                    'top_k' => $topK,
                     'stream' => true,
-                    'messages' => [
-                        [
-                            'role' => 'user',
-                            'content' => $message
-                        ]
-                    ]
+                    'messages' => $messages
                 ];
 
                 // Add system prompt if provided
-                if (!empty($config['systemPrompt'])) {
-                    $payload['system'] = $config['systemPrompt'];
+                if (!empty($systemPrompt)) {
+                    $payload['system'] = $systemPrompt;
                 }
 
                 $response = Http::timeout(60)
                     ->withHeaders([
-                        'x-api-key' => $config['apiKey'],
+                        'x-api-key' => $apiKey,
                         'Content-Type' => 'application/json',
                         'anthropic-version' => '2023-06-01',
                     ])
