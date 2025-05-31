@@ -34,7 +34,7 @@ import {
   ThumbsUp,
   RefreshCw,
 } from "lucide-react";
-import   api  from "@/lib/api";
+import { apiClient } from "@/lib/api-client";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 
 interface AnalyticsData {
@@ -110,7 +110,7 @@ const AnalyticsDashboard = ({
         params.append('widget_id', selectedWidget);
       }
 
-      const response = await api.get(`/analytics/report?${params}`);
+      const response = await apiClient.get(`/analytics/report?${params}`);
 
       if (response.data.success) {
         setAnalyticsData(response.data.data);

@@ -26,8 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
-import { aiModelApi } from "@/lib/models-api";
-import { aiProviderApi } from "@/lib/api";
+import { apiClient } from "@/lib/api-client";
 import {
   Search,
   Plus,
@@ -134,7 +133,7 @@ const AIModelManagement: React.FC = () => {
         is_active: activeFilter ? activeFilter === "active" : undefined,
       };
 
-      const response = await aiModelApi.getAll(params);
+      const response = await apiClient.get('/ai-models', { params });
       console.log("Models API response:", response.data);
 
       // Handle the new API response format
@@ -161,7 +160,7 @@ const AIModelManagement: React.FC = () => {
 
   const fetchProviders = async () => {
     try {
-      const response = await aiProviderApi.getAll();
+      const response = await apiClient.get('/ai-providers');
       console.log("Providers API response:", response.data);
 
       // Handle the new API response format
@@ -188,7 +187,7 @@ const AIModelManagement: React.FC = () => {
 
     try {
       setFetchingModels(true);
-      const response = await aiModelApi.fetchAvailableModels({
+      const response = await apiClient.post('/ai-models/fetch-available', {
         provider: providerType,
         api_key: apiKey,
       });
@@ -276,7 +275,7 @@ const AIModelManagement: React.FC = () => {
     if (!validateForm()) return;
 
     try {
-      const response = await aiModelApi.create(formData);
+      const response = await apiClient.post('/ai-models', formData);
       const message = response.data?.message || "AI model created successfully";
       toast({
         title: "Success",
@@ -312,7 +311,7 @@ const AIModelManagement: React.FC = () => {
     if (!selectedModel || !validateForm()) return;
 
     try {
-      const response = await aiModelApi.update(selectedModel.id, formData);
+      const response = await apiClient.put(`/ai-models/${selectedModel.id}`, formData);
       const message = response.data?.message || "AI model updated successfully";
       toast({
         title: "Success",
@@ -348,7 +347,7 @@ const AIModelManagement: React.FC = () => {
     if (!confirm("Are you sure you want to delete this model?")) return;
 
     try {
-      const response = await aiModelApi.delete(id);
+      const response = await apiClient.delete(`/ai-models/${id}`);
       const message = response.data?.message || "AI model deleted successfully";
       toast({
         title: "Success",
@@ -368,7 +367,7 @@ const AIModelManagement: React.FC = () => {
 
   const handleToggleActive = async (id: string) => {
     try {
-      const response = await aiModelApi.toggleActive(id);
+      const response = await apiClient.put(`/ai-models/${id}/toggle-active`);
       const message =
         response.data?.message ||
         `Model ${response.data?.data?.is_active ? "activated" : "deactivated"} successfully`;
@@ -390,7 +389,7 @@ const AIModelManagement: React.FC = () => {
 
   const handleToggleFeatured = async (id: string) => {
     try {
-      const response = await aiModelApi.toggleFeatured(id);
+      const response = await apiClient.put(`/ai-models/${id}/toggle-featured`);
       const message =
         response.data?.message ||
         `Model ${response.data?.data?.is_featured ? "featured" : "unfeatured"} successfully`;
@@ -432,7 +431,7 @@ const AIModelManagement: React.FC = () => {
         throw new Error("Provider not found");
       }
 
-      const response = await aiModelApi.testModel({
+      const response = await apiClient.post('/ai-models/test', {
         provider: formData.provider_type,
         model_id: formData.model_id,
         api_key: selectedProvider.api_key,

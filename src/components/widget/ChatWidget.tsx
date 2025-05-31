@@ -5,8 +5,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { chatApi } from "@/lib/api";
 import { X, Minimize2, MessageSquare, Send, Loader2 } from "lucide-react";
+
+// Import from the API client
+import { apiClient } from "@/lib/api-client";
 
 interface ChatWidgetProps {
   widgetId: string;
@@ -33,7 +35,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string>(
     localStorage.getItem(`chat_session_${widgetId}`) ||
-      `session_${Math.random().toString(36).substring(2, 15)}`,
+    `session_${Math.random().toString(36).substring(2, 15)}`,
   );
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -79,7 +81,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
     // Load previous messages if session exists
     const loadMessages = async () => {
       try {
-        const response = await chatApi.getBySession(sessionId);
+        const response = await apiClient.get(`/chats/sessions/${sessionId}`);
         if (response.data && response.data.length > 0) {
           const formattedMessages = response.data.map((msg: any) => ({
             id: msg.id,
@@ -122,7 +124,7 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
 
     try {
       // Send message to API
-      const response = await chatApi.sendMessage({
+      const response = await apiClient.post('/chats/messages', {
         widget_id: widgetId,
         session_id: sessionId,
         message: userMessage.content,
@@ -217,11 +219,10 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
               className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[80%] rounded-lg p-3 ${
-                  message.sender === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
-                }`}
+                className={`max-w-[80%] rounded-lg p-3 ${message.sender === "user"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted"
+                  }`}
               >
                 <div className="flex items-start">
                   {message.sender === "ai" && (
@@ -235,11 +236,10 @@ const ChatWidget: React.FC<ChatWidgetProps> = ({
                     <p className="whitespace-pre-wrap">{message.content}</p>
                     {widgetConfig.behavior?.showTimestamp && (
                       <p
-                        className={`text-xs mt-1 ${
-                          message.sender === "user"
-                            ? "text-primary-foreground/70"
-                            : "text-muted-foreground"
-                        }`}
+                        className={`text-xs mt-1 ${message.sender === "user"
+                          ? "text-primary-foreground/70"
+                          : "text-muted-foreground"
+                          }`}
                       >
                         {formatTime(message.timestamp)}
                       </p>

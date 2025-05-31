@@ -4,7 +4,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Copy, Save, Loader2 } from "lucide-react";
 import { useWidgetStore, Widget, WidgetConfig } from "@/lib/store";
 import { useAIProviderStore } from "@/lib/store";
-import api from "@/lib/api";
+import { apiClient } from "@/lib/api-client";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 
@@ -66,7 +66,7 @@ const WidgetBuilder = () => {
   useEffect(() => {
     const loadDefaultConfig = async () => {
       try {
-        const response = await api.get('/system-settings/widget-defaults');
+        const response = await apiClient.get('/system-settings/widget-defaults');
         if (response.data.success) {
           setWidgetConfig(response.data.data);
         }

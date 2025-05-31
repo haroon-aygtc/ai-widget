@@ -24,7 +24,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import WidgetList from "./WidgetList";
-import api from "@/lib/api";
+import { apiClient } from "@/lib/api-client";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 
 interface DashboardStats {
@@ -48,7 +48,7 @@ const DashboardPage: React.FC = () => {
     setError(null);
 
     try {
-      const response = await api.get('/analytics/overview');
+      const response = await apiClient.get('/analytics/overview');
       if (response.data.success) {
         setStats(response.data.data);
       } else {

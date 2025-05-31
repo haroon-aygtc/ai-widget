@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { ReactNode } from 'react';
-import { aiProviderApi, widgetApi } from './api';
+import { apiClient } from './api-client';
 
 // Types
 export interface AIProvider {
@@ -98,7 +98,7 @@ export const useAIProviderStore = create<AIProviderState>(
     fetchProviders: async () => {
       set({ isLoading: true, error: null });
       try {
-        const response = await aiProviderApi.getAll();
+        const response = await apiClient.get('/ai-providers');
         set({ providers: response.data, isLoading: false });
       } catch (error) {
         set({
@@ -110,7 +110,7 @@ export const useAIProviderStore = create<AIProviderState>(
     createProvider: async (provider) => {
       set({ isLoading: true, error: null });
       try {
-        const response = await aiProviderApi.create(provider);
+        const response = await apiClient.post('/ai-providers', provider);
         set(state => ({
           providers: [...state.providers, response.data],
           isLoading: false,
@@ -125,7 +125,7 @@ export const useAIProviderStore = create<AIProviderState>(
     updateProvider: async (id, provider) => {
       set({ isLoading: true, error: null });
       try {
-        const response = await aiProviderApi.update(id, provider);
+        const response = await apiClient.put(`/ai-providers/${id}`, provider);
         set(state => ({
           providers: state.providers.map(p => (p.id === id ? response.data : p)),
           isLoading: false,
@@ -140,7 +140,7 @@ export const useAIProviderStore = create<AIProviderState>(
     deleteProvider: async (id) => {
       set({ isLoading: true, error: null });
       try {
-        await aiProviderApi.delete(id);
+        await apiClient.delete(`/ai-providers/${id}`);
         set(state => ({
           providers: state.providers.filter(p => p.id !== id),
           isLoading: false,
@@ -155,7 +155,7 @@ export const useAIProviderStore = create<AIProviderState>(
     testConnection: async (provider) => {
       set({ isLoading: true, error: null });
       try {
-        const response = await aiProviderApi.testConnection(provider);
+        const response = await apiClient.post('/ai-providers/test-connection', provider);
         set({ isLoading: false });
         return response.data.success;
       } catch (error) {
@@ -180,7 +180,7 @@ export const useWidgetStore = create<WidgetState>(
     fetchWidgets: async () => {
       set({ isLoading: true, error: null });
       try {
-        const response = await widgetApi.getAll();
+        const response = await apiClient.get('/widgets');
         // Ensure response.data is an array
         const widgetsData = Array.isArray(response.data) ? response.data : [];
         set({ widgets: widgetsData, isLoading: false });
@@ -195,7 +195,7 @@ export const useWidgetStore = create<WidgetState>(
     createWidget: async (widget) => {
       set({ isLoading: true, error: null });
       try {
-        const response = await widgetApi.create(widget);
+        const response = await apiClient.post('/widgets', widget);
         set(state => ({
           widgets: Array.isArray(state.widgets) ? [...state.widgets, response.data] : [response.data],
           currentWidget: response.data,
@@ -211,7 +211,7 @@ export const useWidgetStore = create<WidgetState>(
     updateWidget: async (id, widget) => {
       set({ isLoading: true, error: null });
       try {
-        const response = await widgetApi.update(id, widget);
+        const response = await apiClient.put(`/widgets/${id}`, widget);
         set(state => ({
           widgets: Array.isArray(state.widgets)
             ? state.widgets.map(w => (w.id === id ? response.data : w))
@@ -229,7 +229,7 @@ export const useWidgetStore = create<WidgetState>(
     deleteWidget: async (id) => {
       set({ isLoading: true, error: null });
       try {
-        await widgetApi.delete(id);
+        await apiClient.delete(`/widgets/${id}`);
         set(state => ({
           widgets: Array.isArray(state.widgets)
             ? state.widgets.filter(w => w.id !== id)
@@ -248,7 +248,7 @@ export const useWidgetStore = create<WidgetState>(
     generateEmbedCode: async (id) => {
       set({ isLoading: true, error: null });
       try {
-        const response = await widgetApi.generateEmbedCode(id);
+        const response = await apiClient.get(`/widgets/${id}/embed-code`);
         set({ isLoading: false });
         return response.data.embed_code || '';
       } catch (error) {

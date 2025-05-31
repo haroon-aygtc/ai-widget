@@ -55,12 +55,16 @@ import {
   Shield,
 } from "lucide-react";
 
+// Import API client
+import { apiClient } from "@/lib/api-client";
+
 interface AIProviderSetupProps {
   onSave?: (config: AIProviderConfig) => void;
 }
 
 interface AIProviderConfig {
   provider_type: string;
+  name: string;
   api_key: string;
   model: string;
   temperature: number;
@@ -73,7 +77,7 @@ interface AIProviderConfig {
 }
 
 const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
-  onSave = () => {},
+  onSave = () => { },
 }) => {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("providers");
@@ -116,14 +120,15 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
   const fetchProviders = async () => {
     try {
       setLoading(true);
-      const { aiProviderApi } = await import("@/lib/api");
-      const response = await aiProviderApi.getAll();
+      // Call the API
+      const response = await apiClient.get('/ai-providers');
 
-      // Handle the new API response format
-      const providersData = response.data?.success
-        ? response.data.data
-        : response.data?.data || response.data || [];
-      setProviders(Array.isArray(providersData) ? providersData : []);
+      // Handle the response format
+      if (response.data?.success && response.data?.configured_providers) {
+        setProviders(response.data.configured_providers || []);
+      } else {
+        setProviders([]);
+      }
     } catch (error) {
       console.error("Failed to fetch providers:", error);
       setProviders([]);
@@ -140,11 +145,12 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
 
   const fetchAvailableProviders = async () => {
     try {
-      const { aiProviderApi } = await import("@/lib/api");
-      const response = await aiProviderApi.getAvailableProviders();
+      // Call the API - get providers from the main endpoint, not a separate available endpoint
+      const response = await apiClient.get('/ai-providers');
 
-      if (response.data?.success && response.data?.providers) {
-        const providerConfigs = Object.entries(response.data.providers).map(
+      // Handle the response format
+      if (response.data?.data?.available_types) {
+        const providerConfigs = Object.entries(response.data.data.available_types).map(
           ([id, config]: [string, any]) => ({
             id,
             name: config.name,
@@ -164,6 +170,8 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
           }),
         );
         setAvailableProviders(providerConfigs);
+      } else {
+        setAvailableProviders([]);
       }
     } catch (error) {
       console.error("Failed to fetch available providers:", error);
@@ -185,14 +193,14 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
 
     try {
       setModelsLoading(true);
-      const { aiModelApi } = await import("@/lib/models-api");
-
-      const response = await aiModelApi.fetchAvailableModels({
+      // Call the API with the correct endpoint and method
+      const response = await apiClient.post('/ai-models/fetch-available', {
         provider: providerType,
         api_key: apiKey,
       });
 
-      if (response.data?.success && response.data?.models) {
+      // Handle the response format
+      if (response.data?.models) {
         const models = response.data.models.map((model: any) =>
           typeof model === "string" ? model : model.id || model.name,
         );
@@ -375,16 +383,17 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
     setTestMessage("Testing connection...");
 
     try {
-      // Import the API service
-      const { aiProviderApi } = await import("@/lib/api");
-
-      // Call the test connection endpoint
-      const response = await aiProviderApi.testConnection({
-        provider: formData.provider_type,
-        apiKey: formData.api_key,
+      // Call the API
+      const response = await apiClient.post('/ai-providers/test-connection', {
+        provider_type: formData.provider_type,
+        api_key: formData.api_key,
+        model: formData.model,
+        temperature: formData.temperature,
+        max_tokens: formData.max_tokens
       });
 
-      if (response.data.success) {
+      // Handle the response
+      if (response.data?.success) {
         setTestStatus("success");
         setTestMessage(response.data.message || "Connection successful!");
 
@@ -399,14 +408,14 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
       } else {
         setTestStatus("error");
         setTestMessage(
-          response.data.message || "Invalid API key or connection failed",
+          response.data?.message || "Invalid API key or connection failed"
         );
 
         toast({
           variant: "destructive",
           title: "Connection failed",
           description:
-            response.data.message || "Invalid API key or connection failed",
+            response.data?.message || "Invalid API key or connection failed",
         });
       }
     } catch (error) {
@@ -424,56 +433,79 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
   };
 
   const handleSaveConfiguration = async () => {
-    const config: AIProviderConfig = {
+    const config = {
       provider_type: formData.provider_type,
+      name: availableProviders.find(p => p.id === formData.provider_type)?.name || formData.provider_type,
       api_key: formData.api_key,
       model: formData.model,
       temperature: formData.temperature,
       max_tokens: formData.max_tokens,
       system_prompt: formData.system_prompt,
-      stream_response: formData.stream_response,
-      context_window: formData.context_window,
-      top_p: formData.top_p,
+      advanced_settings: {
+        stream_response: formData.stream_response,
+        context_window: formData.context_window,
+        top_p: formData.top_p,
+      },
       is_active: formData.is_active,
     };
 
     try {
       setLoading(true);
-      const { aiProviderApi } = await import("@/lib/api");
-
       let response;
       if (isEditing && selectedProvider) {
         // Update existing provider
-        response = await aiProviderApi.update(selectedProvider.id, config);
-        toast({
-          title: "Provider updated",
-          description:
-            "AI Provider configuration has been updated successfully.",
-          variant: "default",
-        });
+        response = await apiClient.put(`/ai-providers/${selectedProvider.id}`, config);
+        if (response.data?.success) {
+          toast({
+            title: "Provider updated",
+            description:
+              "AI Provider configuration has been updated successfully.",
+            variant: "default",
+          });
+        }
       } else {
         // Create new provider
-        response = await aiProviderApi.create(config);
-        toast({
-          title: "Provider created",
-          description: "New AI Provider has been created successfully.",
-          variant: "default",
-        });
+        response = await apiClient.post('/ai-providers', config);
+        if (response.data?.success) {
+          toast({
+            title: "Provider created",
+            description: "New AI Provider has been created successfully.",
+            variant: "default",
+          });
+        }
       }
 
-      // Refresh providers list
-      await fetchProviders();
+      // Only proceed if the operation was successful
+      if (response.data?.success) {
+        // Refresh providers list
+        await fetchProviders();
 
-      // Call the onSave callback
-      onSave(config);
+        // Call the onSave callback with the form data translated to AIProviderConfig
+        onSave({
+          provider_type: formData.provider_type,
+          name: config.name,
+          api_key: formData.api_key,
+          model: formData.model,
+          temperature: formData.temperature,
+          max_tokens: formData.max_tokens,
+          system_prompt: formData.system_prompt,
+          stream_response: formData.stream_response,
+          context_window: formData.context_window,
+          top_p: formData.top_p,
+          is_active: formData.is_active,
+        });
 
-      // Reset form and go back to providers tab
-      setActiveTab("providers");
+        // Reset form and go back to providers tab
+        setActiveTab("providers");
+      } else {
+        throw new Error(response.data?.message || "Failed to save configuration");
+      }
     } catch (error: any) {
       console.error("Save configuration error:", error);
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.errors ||
+        error.message ||
         "Failed to save configuration. Please try again.";
 
       toast({
@@ -492,21 +524,27 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
   const handleDeleteProvider = async (providerId: string) => {
     try {
       setLoading(true);
-      const { aiProviderApi } = await import("@/lib/api");
-      const response = await aiProviderApi.delete(providerId);
+      // Call the API
+      const response = await apiClient.delete(`/ai-providers/${providerId}`);
 
-      toast({
-        title: "Provider deleted",
-        description: "AI Provider has been removed successfully.",
-        variant: "default",
-      });
+      // Handle the response
+      if (response.data?.success) {
+        toast({
+          title: "Provider deleted",
+          description: "AI Provider has been removed successfully.",
+          variant: "default",
+        });
 
-      // Refresh providers list
-      await fetchProviders();
+        // Refresh providers list
+        await fetchProviders();
+      } else {
+        throw new Error(response.data?.message || "Failed to delete provider");
+      }
     } catch (error: any) {
       console.error("Delete provider error:", error);
       const errorMessage =
         error.response?.data?.message ||
+        error.message ||
         "Failed to delete provider. Please try again.";
 
       toast({
@@ -952,7 +990,7 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                         </SelectTrigger>
                         <SelectContent>
                           {getAvailableModels(formData.provider_type)?.length >
-                          0 ? (
+                            0 ? (
                             getAvailableModels(formData.provider_type).map(
                               (modelOption) => (
                                 <SelectItem
@@ -975,7 +1013,7 @@ const AIProviderSetup: React.FC<AIProviderSetupProps> = ({
                       {formData.api_key &&
                         !modelsLoading &&
                         getAvailableModels(formData.provider_type).length ===
-                          0 && (
+                        0 && (
                           <div className="flex items-center gap-2 mt-2">
                             <AlertCircle className="h-4 w-4 text-amber-500" />
                             <p className="text-xs text-muted-foreground">

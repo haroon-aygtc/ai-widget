@@ -24,8 +24,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import api from "@/lib/api";
-import { apiTestingService } from "@/lib/api";
+import { apiClient } from "@/lib/api-client";
 import {
   Play,
   Plus,
@@ -107,7 +106,7 @@ const APITestingTool: React.FC = () => {
   const discoverEndpoints = async () => {
     try {
       setDiscovering(true);
-      const response = await apiTestingService.discoverEndpoints();
+      const response = await apiClient.get('/api-discovery');
       setEndpoints(response.data.endpoints);
       setDiscovering(false);
     } catch (error) {
@@ -292,7 +291,7 @@ const APITestingTool: React.FC = () => {
       }
 
       const startTime = performance.now();
-      const result = await apiTestingService.executeRequest({
+      const result = await apiClient.post('/api-testing/execute-request', {
         method: selectedMethod,
         endpoint: customEndpoint,
         headers: requestHeaders,

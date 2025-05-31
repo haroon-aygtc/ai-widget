@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import api, { userApi } from "@/lib/api";
+import { apiClient } from "@/lib/api-client";
 import {
   Plus,
   User,
@@ -81,7 +81,7 @@ const UserManagement: React.FC = () => {
       if (roleFilter !== "all") params.role = roleFilter;
       if (statusFilter !== "all") params.status = statusFilter;
 
-      const response = await userApi.getAll(params);
+      const response = await apiClient.get('/users', { params });
 
       if (response.data.data) {
         setUsers(response.data.data);
@@ -117,7 +117,7 @@ const UserManagement: React.FC = () => {
     if (!validateForm()) return;
 
     try {
-      await userApi.create({
+      await apiClient.post('/users', {
         ...formData,
         password_confirmation: formData.password,
       });
@@ -158,7 +158,7 @@ const UserManagement: React.FC = () => {
         delete updateData.password;
       }
 
-      await userApi.update(selectedUser.id, updateData);
+      await apiClient.put(`/users/${selectedUser.id}`, updateData);
 
       toast({
         title: "Success",
@@ -191,7 +191,7 @@ const UserManagement: React.FC = () => {
     if (!confirm("Are you sure you want to delete this user?")) return;
 
     try {
-      await userApi.delete(id);
+      await apiClient.delete(`/users/${id}`);
       toast({
         title: "Success",
         description: "User deleted successfully",
@@ -208,7 +208,7 @@ const UserManagement: React.FC = () => {
 
   const handleToggleStatus = async (id: string) => {
     try {
-      await userApi.toggleStatus(id);
+      await apiClient.put(`/users/${id}/toggle-status`);
       toast({
         title: "Success",
         description: "User status updated successfully",
